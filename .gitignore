@@ -1,0 +1,6 @@
+# הגדרות Claude Code מקומיות (הרשאות אישיות למכונה הזו, לא לשיתוף)
+.claude/settings.local.json
+
+# קבצי מערכת הפעלה
+.DS_Store
+Thumbs.db
