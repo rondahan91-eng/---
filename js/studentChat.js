@@ -1,128 +1,229 @@
 // ==========================================================================
-// studentChat.js - הצ'אט המאוחד עם ה-AI Mentor: העלאת תמונות שבועיות + 3
-// שאלות מוערכות משולבות + צ'אט עזרה חופשי בלתי מוגבל (FR-B/FR-F).
+// studentChat.js - ממשק התלמיד: app shell עם מסילת משימה (זהות, כרטיס
+// המחקר האישי, צעדי השבוע) לצד שיחה רציפה אחת עם ה-AI Mentor -
+// 3 שאלות מוערכות משולבות + עזרה חופשית בלתי מוגבלת סביבן (FR-B/FR-F).
 // ==========================================================================
-import { escapeHtml, toast, topbarHtml, wireLogout } from './ui.js';
+import { escapeHtml, toast, logoMark } from './ui.js';
 import { getStudentContext, sendMentorMessage } from './api.js';
 
+const STRATEGY_BLURB = {
+  'תקן': 'נתונים אידיאליים — התמונות הברורות והמאוזנות ביותר',
+  'הטיות': 'מאגר לא מאוזן — לחקר GIGO והטיה בנתונים',
+  'רעשים': 'תמונות קשות לפיענוח — חפצים זרים, גבס, חשיפה חסרה',
+};
+
 export async function mountStudentChat(app, session, onLogout) {
-  app.innerHTML = `<div class="center-msg" style="margin:auto;"><div class="spinner"></div>טוען...</div>`;
+  app.innerHTML = `<div class="center-msg"><div class="spinner"></div>טוען את סביבת המחקר שלך...</div>`;
+
   let ctx;
   try {
     ctx = await getStudentContext(session.studentId);
   } catch (err) {
-    app.innerHTML = `<div class="center-msg" style="margin:auto;">שגיאה בטעינת הפרופיל: ${escapeHtml(err.message)}</div>`;
+    app.innerHTML = `<div class="center-msg">שגיאה בטעינת הפרופיל: ${escapeHtml(err.message)}</div>`;
     return;
   }
 
   const state = {
-    history: [], // {role:'user'|'model', text}
-    images: null, // [{base64, mimeType}] עד 2, נקבע פעם אחת בתחילת השבוע
-    pendingSlots: [null, null], // תצוגה מקדימה בזמן מילוי הטופס
-    sessionStart: Date.now(),
-    uploadDone: ctx.gradedThisWeek, // אם כבר בוצע השבוע - לא מציגים את כרטיס ההעלאה
+    history: [],
+    images: null,          // נשלח פעם אחת, עם ההודעה שפותחת את החלק המוערך
+    slots: [null, null],   // תצוגה מקדימה (dataURL) לפני השליחה
+    submittedTask: ctx.gradedThisWeek,
     sending: false,
+    sessionStart: Date.now(),
   };
 
   render();
 
-  function render() {
-    app.innerHTML = `
-      ${topbarHtml(session, ctx.bodyPart + ' · אסטרטגיית ' + escapeHtml(ctx.strategy))}
-      <div class="chat-wrap">
-        <div class="week-banner">שבוע ${ctx.weekNumber}${ctx.topicText ? ' · נושא השבוע: ' + escapeHtml(ctx.topicText) : ''}
-          ${ctx.gradedThisWeek ? ' · <b>החלק המוערך של השבוע כבר בוצע ✓</b> — אפשר להמשיך לשוחח בעזרה חופשית.' : ''}
-        </div>
-        ${!state.uploadDone ? renderUploadCard() : ''}
-        <div class="messages" id="messages">
-          ${state.history.length === 0 ? `<div class="msg system-note">כתבו הודעה כדי להתחיל, או השלימו למעלה את תמונות ההתקדמות לשבוע זה.</div>` : ''}
-          ${state.history.map(renderBubble).join('')}
-          ${state.sending ? `<div class="typing-dots">ה-AI Mentor כותב...</div>` : ''}
-        </div>
-        <form class="chat-input-row" id="chat-form">
-          <textarea id="chat-input" placeholder="כתבו הודעה..." required></textarea>
-          <button type="submit" id="send-btn">שליחה</button>
-        </form>
+  // ---------------------------------------------------------------- מסילת הצד
+  function railHtml() {
+    const initial = (ctx.firstName || '?').trim().charAt(0);
+    const imagesDone = state.submittedTask;
+    const answering = state.submittedTask && !ctx.gradedThisWeek;
+    const scored = ctx.gradedThisWeek;
+
+    const step = (done, active, label) =>
+      `<div class="step${done ? ' done' : ''}${active ? ' active' : ''}">
+         <span class="dot">${done ? '✓' : ''}</span><span class="txt">${label}</span>
+       </div>`;
+
+    return `
+    <aside class="rail">
+      <div class="rail-top">
+        <div class="rail-brand">${logoMark(26)} <span>AI Mentor</span></div>
+        <button class="ghost" id="logout-btn" style="padding:6px 10px;font-size:12px;">יציאה</button>
       </div>
-      <div id="toast" class="toast"></div>`;
-    wireLogout(onLogout);
-    wireUploadCard();
-    wireChatForm();
-    scrollToBottom();
+
+      <div class="id-card">
+        <div class="avatar">${escapeHtml(initial)}</div>
+        <div class="who">
+          <b>${escapeHtml(ctx.firstName || session.displayName)}</b>
+          <span>${escapeHtml(ctx.group || 'ללא קבוצה')}</span>
+        </div>
+      </div>
+
+      <div class="mission" data-strategy="${escapeHtml(ctx.strategy || '')}">
+        <h4>המחקר שלי</h4>
+        <div class="mission-row"><span>איבר ההתמחות</span><b>${escapeHtml(ctx.bodyPart || '—')}</b></div>
+        <div class="mission-row"><span>אסטרטגיה</span><span class="s-chip">${escapeHtml(ctx.strategy || '—')}</span></div>
+        <p class="form-note" style="margin-top:8px;">${escapeHtml(STRATEGY_BLURB[ctx.strategy] || '')}</p>
+      </div>
+
+      <div class="steps">
+        <h4>המשימה השבועית</h4>
+        ${step(imagesDone, !imagesDone, '2 תמונות התקדמות + סיכום')}
+        ${step(scored, answering, 'מענה על שאלות המנטור')}
+        ${step(scored, false, 'קבלת ציון ומשוב')}
+      </div>
+
+      <div class="rail-tip">
+        <b>שימו לב:</b> רק החלק המוערך נכנס לציון. בכל שאר השיחה אפשר לשאול
+        בחופשיות על הפרויקט, על הפעלת Teachable Machine או על אנטומיה ופיזיקה
+        של הדימות — בלי שזה נמדד.
+      </div>
+    </aside>`;
   }
 
-  function renderUploadCard() {
+  // ---------------------------------------------------------------- שיחה
+  function turnHtml(turn) {
+    if (turn.role === 'user') {
+      return `<div class="turn me">
+          <div class="who-mark">${escapeHtml((ctx.firstName || '?').charAt(0))}</div>
+          <div class="bubble">${escapeHtml(turn.text)}</div>
+        </div>`;
+    }
+    const scored = /ציון ההערכה לשבוע זה/.test(turn.text);
+    return `<div class="turn ai${scored ? ' scored' : ''}">
+        <div class="who-mark">${logoMark(18)}</div>
+        <div>
+          <span class="turn-tag">${scored ? 'הערכה וציון' : 'AI Mentor'}</span>
+          <div class="bubble">${escapeHtml(turn.text)}</div>
+        </div>
+      </div>`;
+  }
+
+  function emptyStateHtml() {
+    return `<div class="stream-empty">
+        ${logoMark(52)}
+        <div class="big">שלום ${escapeHtml(ctx.firstName || '')}, נתחיל?</div>
+        <p>אפשר לפתוח בשאלה חופשית על הפרויקט, או להעלות למטה את תמונות
+           ההתקדמות של השבוע כדי להתחיל את החלק המוערך.</p>
+      </div>`;
+  }
+
+  function taskStripHtml() {
+    if (state.submittedTask) return '';
     return `
-    <div class="upload-card glass">
-      <h3>📸 תמונות התקדמות לשבוע ${ctx.weekNumber}</h3>
-      <p class="form-note" style="margin-top:0;">העלו 2 תמונות + סיכום קצר של השבוע - זה יתחיל את החלק המוערך של הצ'ק-אין.</p>
-      <div class="upload-row">
+    <div class="task-strip">
+      <div class="task-strip-head">
+        <b>משימת שבוע ${ctx.weekNumber}</b>
+        <span class="mini">— 2 תמונות + סיכום קצר. השליחה פותחת את החלק המוערך.</span>
+      </div>
+      <div class="tiles">
         ${[0, 1].map(i => `
-          <label class="upload-slot" for="img-slot-${i}">
-            ${state.pendingSlots[i]
-              ? `<img src="${state.pendingSlots[i]}" alt="תמונה ${i + 1}">`
-              : `<span class="hint">תמונה ${i + 1}<br>לחצו לבחירה</span>`}
-            <input type="file" id="img-slot-${i}" accept="image/*">
+          <label class="tile${state.slots[i] ? ' filled' : ''}">
+            ${state.slots[i]
+              ? `<img src="${state.slots[i]}" alt="תמונה ${i + 1}">`
+              : `<span class="ph">תמונה ${i + 1}<br>לחצו לבחירה</span>`}
+            <input type="file" class="slot-input" data-idx="${i}" accept="image/*">
           </label>`).join('')}
       </div>
-      <div class="field"><textarea id="week-summary" rows="3" placeholder="סיכום מילולי קצר של השבוע..."></textarea></div>
+      <div class="field" style="margin-bottom:10px;">
+        <textarea id="week-summary" rows="2" placeholder="מה עשית השבוע? (אילו תמונות אספת ולמה הן מתאימות לאסטרטגיה שלך)"></textarea>
+      </div>
       <button type="button" id="start-graded-btn" style="width:100%;">שליחה והתחלת החלק המוערך</button>
     </div>`;
   }
 
-  function renderBubble(turn) {
-    if (turn.role === 'user') return `<div class="msg user">${escapeHtml(turn.text)}</div>`;
-    const isGraded = /ציון ההערכה לשבוע זה/.test(turn.text);
-    return `<div class="mode-badge${isGraded ? ' graded' : ''}">${isGraded ? '📋 חלק מוערך' : '💬 עזרה חופשית'}</div>
-            <div class="msg model${isGraded ? ' graded' : ''}">${escapeHtml(turn.text)}</div>`;
+  function render() {
+    const statusPill = ctx.gradedThisWeek
+      ? '<span class="pill ok">החלק המוערך הושלם ✓</span>'
+      : (state.submittedTask ? '<span class="pill warn">בתהליך הערכה</span>' : '<span class="pill bad">טרם בוצע</span>');
+
+    app.innerHTML = `
+    <div class="shell">
+      ${railHtml()}
+      <main class="main">
+        <header class="stream-head">
+          <span class="week-pill">שבוע ${ctx.weekNumber}</span>
+          <span class="topic-line">${ctx.topicText
+            ? `נושא השבוע: <b>${escapeHtml(ctx.topicText)}</b>`
+            : 'טרם הוזן נושא שבועי'}</span>
+          <span class="head-status">${statusPill}</span>
+        </header>
+
+        <div class="stream" id="stream">
+          ${state.history.length ? state.history.map(turnHtml).join('') : emptyStateHtml()}
+          ${state.sending ? `<div class="turn ai"><div class="who-mark">${logoMark(18)}</div>
+            <div class="bubble thinking"><i></i><i></i><i></i></div></div>` : ''}
+        </div>
+
+        <div class="dock">
+          ${taskStripHtml()}
+          <form class="composer" id="chat-form">
+            <textarea id="chat-input" rows="1" placeholder="כתבו הודעה למנטור..." required></textarea>
+            <button type="submit" id="send-btn">שליחה</button>
+          </form>
+          <div class="dock-note">${ctx.gradedThisWeek
+            ? 'החלק המוערך של השבוע הסתיים — מכאן השיחה חופשית ואינה נמדדת.'
+            : 'שאלות חופשיות אינן נמדדות. רק שאלות המנטור המסומנות מזכות בציון.'}</div>
+        </div>
+      </main>
+    </div>
+    <div id="toast" class="toast"></div>`;
+
+    wire();
+    const stream = document.getElementById('stream');
+    if (stream) stream.scrollTop = stream.scrollHeight;
   }
 
-  function wireUploadCard() {
-    const btn = document.getElementById('start-graded-btn');
-    if (!btn) return;
-    [0, 1].forEach(i => {
-      const input = document.getElementById('img-slot-' + i);
+  // ---------------------------------------------------------------- אירועים
+  function wire() {
+    document.getElementById('logout-btn').addEventListener('click', onLogout);
+
+    document.querySelectorAll('.slot-input').forEach(input => {
       input.addEventListener('change', () => {
         const file = input.files && input.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = () => {
-          state.pendingSlots[i] = reader.result;
-          render();
-        };
+        reader.onload = () => { state.slots[Number(input.dataset.idx)] = reader.result; render(); };
         reader.readAsDataURL(file);
       });
     });
-    btn.addEventListener('click', async () => {
-      const summary = document.getElementById('week-summary').value.trim();
-      const filled = state.pendingSlots.filter(Boolean);
-      if (!filled.length || !summary) {
-        toast('נא להעלות לפחות תמונה אחת ולכתוב סיכום קצר', true);
-        return;
-      }
-      state.images = state.pendingSlots.filter(Boolean).map(dataUrl => {
-        const [meta, base64] = dataUrl.split(',');
-        const mimeType = meta.match(/data:(.*);base64/)[1];
-        return { base64, mimeType };
-      });
-      state.uploadDone = true;
-      await sendMessage(summary || '(תמונות התקדמות השבוע מצורפות)');
-    });
-  }
 
-  function wireChatForm() {
+    const startBtn = document.getElementById('start-graded-btn');
+    if (startBtn) {
+      startBtn.addEventListener('click', () => {
+        const summary = document.getElementById('week-summary').value.trim();
+        if (!state.slots.some(Boolean) || !summary) {
+          toast('נא להעלות לפחות תמונה אחת ולכתוב סיכום קצר', true);
+          return;
+        }
+        state.images = state.slots.filter(Boolean).map(dataUrl => {
+          const [meta, base64] = dataUrl.split(',');
+          return { base64, mimeType: meta.match(/data:(.*);base64/)[1] };
+        });
+        state.submittedTask = true;
+        send(summary);
+      });
+    }
+
     const form = document.getElementById('chat-form');
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', (e) => {
       e.preventDefault();
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
       if (!text || state.sending) return;
       input.value = '';
-      await sendMessage(text);
+      send(text);
+    });
+
+    // Enter שולח, Shift+Enter יורד שורה
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
     });
   }
 
-  async function sendMessage(text) {
+  async function send(text) {
     state.history.push({ role: 'user', text });
     state.sending = true;
     render();
@@ -140,10 +241,5 @@ export async function mountStudentChat(app, session, onLogout) {
       state.sending = false;
       render();
     }
-  }
-
-  function scrollToBottom() {
-    const el = document.getElementById('messages');
-    if (el) el.scrollTop = el.scrollHeight;
   }
 }

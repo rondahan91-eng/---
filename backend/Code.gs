@@ -12,6 +12,10 @@ const SHEET_USERS = 'Users';
 const SHEET_TOPICS = 'WeeklyTopics';
 const SHEET_CHECKINS = 'WeeklyCheckIns';
 const SHEET_HELPCHATS = 'HelpChatLog';
+const SHEET_SESSIONS = 'Sessions';
+
+// תוקף טוקן התחברות. אחרי הזמן הזה נדרשת התחברות מחדש.
+const TOKEN_TTL_HOURS = 24;
 
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
@@ -44,24 +48,116 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+/**
+ * כל פעולה - חוץ מההתחברות עצמה - דורשת טוקן תקף. בלי זה, מי שמשיג את
+ * כתובת ה-/exec יכול היה למשוך את כל נתוני הכיתה ללא סיסמה.
+ */
 function routeAction(action, payload) {
   switch (action) {
     case 'authenticateUser': return authenticateUser(payload.username, payload.password);
-    case 'changePassword': return changePassword(payload.studentId, payload.newPassword);
-    case 'resetStudentPassword': return resetStudentPassword(payload.studentId, payload.newPassword);
-    case 'importRoster': return importRoster(payload.students);
-    case 'getStudentContext': return getStudentContext(payload.studentId);
-    case 'sendMentorMessage': return sendMentorMessage(payload.studentId, payload.history, payload.images, payload.elapsedSeconds);
-    case 'startNewWeek': return startNewWeek(payload.topicText);
-    case 'updateCurrentWeekTopic': return updateCurrentWeekTopic(payload.topicText);
-    case 'getCurrentWeek': return getCurrentWeekInfo();
-    case 'getDashboard': return getDashboard();
-    case 'getStudentTranscripts': return getStudentTranscripts(payload.studentId);
-    case 'setManualGrade': return setManualGrade(payload.checkInId, payload.score, payload.note);
-    case 'exportWeeklyReport': return exportWeeklyReport();
-    case 'installWeeklyTrigger': return installWeeklyTrigger();
+    case 'logout': return logout(payload.token);
+
+    // --- התלמיד/ה עצמו/ה, או המורה ---
+    case 'changePassword':
+      requireSelfOrAdmin(payload, payload.studentId);
+      return changePassword(payload.studentId, payload.newPassword);
+    case 'getStudentContext':
+      requireSelfOrAdmin(payload, payload.studentId);
+      return getStudentContext(payload.studentId);
+    case 'sendMentorMessage':
+      requireSelfOrAdmin(payload, payload.studentId);
+      return sendMentorMessage(payload.studentId, payload.history, payload.images, payload.elapsedSeconds);
+    case 'getCurrentWeek':
+      requireAuth(payload);
+      return getCurrentWeekInfo();
+
+    // --- מורה בלבד ---
+    case 'resetStudentPassword':
+      requireAdmin(payload);
+      return resetStudentPassword(payload.studentId, payload.newPassword);
+    case 'importRoster':
+      requireAdmin(payload);
+      return importRoster(payload.students);
+    case 'startNewWeek':
+      requireAdmin(payload);
+      return startNewWeek(payload.topicText);
+    case 'updateCurrentWeekTopic':
+      requireAdmin(payload);
+      return updateCurrentWeekTopic(payload.topicText);
+    case 'getDashboard':
+      requireAdmin(payload);
+      return getDashboard();
+    case 'getStudentTranscripts':
+      requireSelfOrAdmin(payload, payload.studentId);
+      return getStudentTranscripts(payload.studentId);
+    case 'setManualGrade':
+      requireAdmin(payload);
+      return setManualGrade(payload.checkInId, payload.score, payload.note);
+    case 'exportWeeklyReport':
+      requireAdmin(payload);
+      return exportWeeklyReport();
+
     default: throw new Error('פעולה לא מוכרת: ' + action);
   }
+}
+
+// -------------------------------------------------------------- טוקנים והרשאות
+const ERR_REAUTH = 'פג תוקף ההתחברות - יש להתחבר מחדש';
+
+function createSession(user) {
+  const sheet = getSheet(SHEET_SESSIONS);
+  pruneExpiredSessions(sheet);
+  const token = Utilities.getUuid() + '-' + Utilities.getUuid();
+  const now = new Date();
+  sheet.appendRow([token, user.studentId, user.role, now,
+    new Date(now.getTime() + TOKEN_TTL_HOURS * 3600 * 1000)]);
+  return token;
+}
+
+function pruneExpiredSessions(sheet) {
+  const values = sheet.getDataRange().getValues();
+  const now = new Date();
+  for (let r = values.length - 1; r >= 1; r--) {
+    const exp = values[r][4];
+    if (exp && new Date(exp) < now) sheet.deleteRow(r + 1);
+  }
+}
+
+function resolveSession(token) {
+  if (!token) throw new Error(ERR_REAUTH);
+  const row = sheetToObjects(getSheet(SHEET_SESSIONS)).find(r => r.token === token);
+  if (!row) throw new Error(ERR_REAUTH);
+  if (new Date(row.expiresAt) < new Date()) throw new Error(ERR_REAUTH);
+  return { studentId: row.studentId, role: row.role };
+}
+
+function requireAuth(payload) {
+  return resolveSession(payload.token);
+}
+
+function requireAdmin(payload) {
+  const s = resolveSession(payload.token);
+  if (s.role !== 'admin') throw new Error('הפעולה מותרת למורה בלבד');
+  return s;
+}
+
+/** תלמיד/ה רשאי/ת לגשת רק לנתונים של עצמו/ה; מורה - לכולם. */
+function requireSelfOrAdmin(payload, studentId) {
+  const s = resolveSession(payload.token);
+  if (s.role !== 'admin' && s.studentId !== studentId) {
+    throw new Error('אין הרשאה לגשת לנתונים של תלמיד/ה אחר/ת');
+  }
+  return s;
+}
+
+function logout(token) {
+  if (!token) return { ok: true };
+  const sheet = getSheet(SHEET_SESSIONS);
+  const values = sheet.getDataRange().getValues();
+  for (let r = 1; r < values.length; r++) {
+    if (values[r][0] === token) { sheet.deleteRow(r + 1); break; }
+  }
+  return { ok: true };
 }
 
 // -------------------------------------------------------------- גישה לגיליונות
@@ -77,7 +173,9 @@ function createSheet(ss, name) {
   if (name === SHEET_USERS) {
     sheet.appendRow(['studentId', 'username', 'passHash', 'mustChangePassword', 'role', 'firstName', 'lastName',
       'last4Id', 'birthDate', 'group', 'bodyPart', 'strategy', 'createdAt']);
-    sheet.appendRow(['admin', 'admin', sha256('admin123'), false, 'admin', 'מורה', 'ראשי', '', '', '', '', '', new Date()]);
+    // mustChangePassword=true: סיסמת ברירת המחדל מתועדת ב-README ולכן ציבורית -
+    // המערכת מחייבת להחליף אותה כבר בכניסה הראשונה של המורה.
+    sheet.appendRow(['admin', 'admin', sha256('admin123'), true, 'admin', 'מורה', 'ראשי', '', '', '', '', '', new Date()]);
   } else if (name === SHEET_TOPICS) {
     sheet.appendRow(['weekNumber', 'topicText', 'setAt']);
   } else if (name === SHEET_CHECKINS) {
@@ -86,6 +184,8 @@ function createSheet(ss, name) {
       'docLink', 'sessionSeconds', 'status']);
   } else if (name === SHEET_HELPCHATS) {
     sheet.appendRow(['logId', 'studentId', 'weekNumber', 'date', 'transcriptJson']);
+  } else if (name === SHEET_SESSIONS) {
+    sheet.appendRow(['token', 'studentId', 'role', 'createdAt', 'expiresAt']);
   }
   sheet.setFrozenRows(1);
   return sheet;
@@ -119,6 +219,7 @@ function authenticateUser(username, password) {
     studentId: user.studentId, username: user.username, role: user.role,
     displayName: (user.firstName || '') + ' ' + (user.lastName || ''),
     mustChangePassword: !!user.mustChangePassword,
+    token: createSession(user),
   };
 }
 

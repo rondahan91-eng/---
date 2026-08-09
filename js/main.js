@@ -3,6 +3,7 @@
 // ==========================================================================
 import { CONFIG } from './config.js';
 import { renderLogin } from './auth.js';
+import { logout as apiLogout } from './api.js';
 import { mountStudentChat } from './studentChat.js';
 import { mountTeacherDashboard } from './teacherDashboard.js';
 
@@ -21,7 +22,8 @@ function route() {
     renderLogin(app, (user) => { saveSession(user); route(); });
     return;
   }
-  const onLogout = () => { clearSession(); route(); };
+  // מבטלים את הטוקן בשרת לפני שמוחקים אותו מקומית, כדי שלא יישאר תקף
+  const onLogout = async () => { await apiLogout(); clearSession(); route(); };
   if (session.role === 'admin') mountTeacherDashboard(app, session, onLogout);
   else mountStudentChat(app, session, onLogout);
 }

@@ -1,26 +1,48 @@
-// מסך התחברות - שם משתמש + סיסמה, כולל חיוב החלפת סיסמה בכניסה ראשונה (FR-A3).
-import { CONFIG } from './config.js';
+// מסך התחברות - פאנל מפוצל (אזור מיתוג + טופס), כולל חיוב החלפת סיסמה
+// בכניסה ראשונה (FR-A3).
+import { logoMark } from './ui.js';
 import { authenticateUser, changePassword, isDevMode } from './api.js';
+
+function artPanel() {
+  return `
+  <div class="auth-art">
+    <div class="auth-brand">${logoMark(34)} <span>AI Mentor · הנדסה ביו-רפואית</span></div>
+    <div>
+      <div class="auth-headline">מהצילום<br>אל האבחנה</div>
+      <p class="auth-sub">ליווי שבועי אישי בפרויקט בניית מודל ה-AI שלך לזיהוי שברים —
+        שאלות עומק על האנטומיה, הפיזיקה של הדימות ואסטרטגיית הנתונים שבחרת.</p>
+    </div>
+    <div class="auth-meta">
+      <div><b>3</b>אסטרטגיות מחקר</div>
+      <div><b>30%</b>מציון הבגרות</div>
+      <div><b>1:1</b>ליווי שבועי</div>
+    </div>
+  </div>`;
+}
 
 export function renderLogin(app, onLoggedIn) {
   app.innerHTML = `
-  <div class="login-wrap">
-    <form class="login-card glass" id="login-form">
-      <div class="login-logo">🩻</div>
-      <h1>${CONFIG.APP_NAME}</h1>
-      <p class="sub">AI Mentor - ליווי שבועי אישי</p>
-      <div class="login-error" id="login-error"></div>
-      <div class="field" style="text-align:right;">
-        <label for="username">שם משתמש</label>
-        <input type="text" id="username" autocomplete="username" required>
-      </div>
-      <div class="field" style="text-align:right;">
-        <label for="password">סיסמה</label>
-        <input type="password" id="password" autocomplete="current-password" required>
-      </div>
-      <button type="submit" id="login-btn" style="width:100%;">כניסה 🔒</button>
-      ${isDevMode() ? `<div class="form-note">מצב פיתוח מקומי (ללא שרת מחובר)<br>מורה: admin / admin123 · תלמידה לדוגמה: מיכל5678 / 140810</div>` : ''}
-    </form>
+  <div class="auth">
+    ${artPanel()}
+    <div class="auth-form">
+      <form class="auth-box" id="login-form">
+        <h2>כניסה למערכת</h2>
+        <p class="lede">התחברו עם הפרטים שקיבלתם ממורה המגמה.</p>
+        <div class="login-error" id="login-error"></div>
+        <div class="field">
+          <label for="username">שם משתמש</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">סיסמה</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" id="login-btn">כניסה</button>
+        ${isDevMode() ? `<div class="auth-hint"><b>מצב פיתוח מקומי</b> (ללא שרת מחובר)<br>
+          מורה: <code>admin</code> / <code>admin123</code><br>
+          תלמידה לדוגמה: <code>מיכל5678</code> / <code>140810</code></div>` : ''}
+      </form>
+    </div>
   </div>`;
 
   const form = document.getElementById('login-form');
@@ -36,38 +58,38 @@ export function renderLogin(app, onLoggedIn) {
     btn.textContent = 'מתחבר...';
     try {
       const user = await authenticateUser(username, password);
-      if (user.mustChangePassword) {
-        renderForcedPasswordChange(app, user, onLoggedIn);
-      } else {
-        onLoggedIn(user);
-      }
+      if (user.mustChangePassword) renderForcedPasswordChange(app, user, onLoggedIn);
+      else onLoggedIn(user);
     } catch (e2) {
       err.textContent = e2.message || 'שגיאת התחברות';
       err.classList.add('show');
       btn.disabled = false;
-      btn.textContent = 'כניסה 🔒';
+      btn.textContent = 'כניסה';
     }
   });
 }
 
 function renderForcedPasswordChange(app, user, onLoggedIn) {
   app.innerHTML = `
-  <div class="login-wrap">
-    <form class="login-card glass" id="pw-form">
-      <div class="login-logo">🔑</div>
-      <h1>החלפת סיסמה</h1>
-      <p class="sub">זו כניסתך הראשונה - יש לבחור סיסמה אישית חדשה לפני שממשיכים.</p>
-      <div class="login-error" id="pw-error"></div>
-      <div class="field" style="text-align:right;">
-        <label for="new-password">סיסמה חדשה</label>
-        <input type="password" id="new-password" autocomplete="new-password" required minlength="4">
-      </div>
-      <div class="field" style="text-align:right;">
-        <label for="new-password-confirm">אימות סיסמה</label>
-        <input type="password" id="new-password-confirm" autocomplete="new-password" required minlength="4">
-      </div>
-      <button type="submit" style="width:100%;">שמירה והמשך</button>
-    </form>
+  <div class="auth">
+    ${artPanel()}
+    <div class="auth-form">
+      <form class="auth-box" id="pw-form">
+        <h2>בחירת סיסמה אישית</h2>
+        <p class="lede">זו הכניסה הראשונה שלך. הסיסמה הזמנית מבוססת על תאריך הלידה —
+          יש להחליף אותה בסיסמה שרק את/ה מכיר/ה.</p>
+        <div class="login-error" id="pw-error"></div>
+        <div class="field">
+          <label for="new-password">סיסמה חדשה</label>
+          <input type="password" id="new-password" autocomplete="new-password" required minlength="4">
+        </div>
+        <div class="field">
+          <label for="new-password-confirm">אימות סיסמה</label>
+          <input type="password" id="new-password-confirm" autocomplete="new-password" required minlength="4">
+        </div>
+        <button type="submit">שמירה והמשך</button>
+      </form>
+    </div>
   </div>`;
 
   const form = document.getElementById('pw-form');

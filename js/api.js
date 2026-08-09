@@ -13,6 +13,18 @@ async function sha256Hex(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ---------------------------------------------------------------- טוקן התחברות
+/** הטוקן נשמר יחד עם ה-session ונשלח בכל בקשה חוץ מההתחברות עצמה. */
+function currentToken() {
+  try { return (JSON.parse(sessionStorage.getItem(CONFIG.SESSION_KEY) || 'null') || {}).token || null; }
+  catch { return null; }
+}
+
+function handleExpiredSession() {
+  sessionStorage.removeItem(CONFIG.SESSION_KEY);
+  location.reload();
+}
+
 // ---------------------------------------------------------------- תקשורת אמיתית
 async function callRemote(action, payload) {
   const res = await fetch(CONFIG.API_URL, {
@@ -22,7 +34,13 @@ async function callRemote(action, payload) {
   });
   if (!res.ok) throw new Error('שגיאת רשת מול השרת (' + res.status + ')');
   const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'שגיאת שרת לא ידועה');
+  if (!data.ok) {
+    if (/פג תוקף ההתחברות/.test(data.error || '')) {
+      handleExpiredSession();
+      throw new Error('פג תוקף ההתחברות - מעביר למסך הכניסה');
+    }
+    throw new Error(data.error || 'שגיאת שרת לא ידועה');
+  }
   return data.result;
 }
 
@@ -66,15 +84,15 @@ const MOCK_QUESTIONS = [
 async function mockMentorReply(db, studentId, history) {
   const u = findStudent(db, studentId);
   const ctx = { firstName: u.firstName, bodyPart: u.bodyPart, strategy: u.strategy, week: db.week };
-  const userTurns = history.filter(h => h.role === 'user').length;
-  if (userTurns >= 3) {
+  const userTurns = history.filter(h => h.role === 'user').length; // כולל ההודעה שרק נשלחה
+  if (userTurns > MOCK_QUESTIONS.length) {
     const score = 7 + Math.floor(Math.random() * 3);
     return {
       reply: `תודה על התשובות, ${u.firstName}. ציון ההערכה לשבוע זה: ${score}. משוב מנטור: הפגנת הבנה טובה של הקישור בין האסטרטגיה שלך לתופעה שנשאלת. לפעם הבאה - נסה/י לחזק את הנימוק המדעי עם עוד מונחים מקצועיים. (הערכה מדומה - מצב פיתוח מקומי)`,
       graded: true, score,
     };
   }
-  return { reply: MOCK_QUESTIONS[userTurns](ctx), graded: false };
+  return { reply: MOCK_QUESTIONS[userTurns - 1](ctx), graded: false };
 }
 
 async function callLocal(action, payload) {
@@ -89,8 +107,11 @@ async function callLocal(action, payload) {
     return {
       studentId: user.studentId, username: user.username, role: user.role,
       displayName: user.firstName + ' ' + user.lastName, mustChangePassword: !!user.mustChangePassword,
+      token: 'dev-' + user.studentId, // במצב פיתוח אין אכיפת הרשאות אמיתית
     };
   }
+
+  if (action === 'logout') return { ok: true };
 
   if (action === 'changePassword') {
     const { studentId, newPassword } = payload;
@@ -223,7 +244,11 @@ async function callLocal(action, payload) {
 }
 
 async function dispatch(action, payload) {
-  return CONFIG.API_URL ? callRemote(action, payload) : callLocal(action, payload);
+  // ההתחברות היא הפעולה היחידה שאין לה עדיין טוקן
+  const withToken = action === 'authenticateUser'
+    ? payload
+    : Object.assign({}, payload, { token: currentToken() });
+  return CONFIG.API_URL ? callRemote(action, withToken) : callLocal(action, withToken);
 }
 
 // ---------------------------------------------------------------- API ציבורי
@@ -232,6 +257,9 @@ export async function authenticateUser(username, password) {
 }
 export async function changePassword(studentId, newPassword) {
   return dispatch('changePassword', { studentId, newPassword });
+}
+export async function logout() {
+  try { await dispatch('logout', {}); } catch { /* ניתוק מקומי גם אם השרת לא ענה */ }
 }
 export async function resetStudentPassword(studentId, newPassword) {
   return dispatch('resetStudentPassword', { studentId, newPassword });
