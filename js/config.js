@@ -7,7 +7,7 @@
 // שימו לב: שיחת ה-AI Mentor עצמה דורשת שרת אמיתי (מפתח Gemini) - במצב פיתוח
 // היא מוצגת כתשובות מדומות קבועות, לצורך בדיקת הממשק בלבד.
 export const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbymvfqid5QjydYDVxlGI0l3ptONgZlaTsSIHctATQQVfeOZy-QxbQmbHrKGLU0UY6RgPw/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwljBqeS54PXTZu1z7WBXsh8ByE13BxfGq-yuW7AKIlPpGhlMB6SX7O13CZD1gm-FYDLA/exec',
   APP_NAME: 'AI Mentor - הנדסה ביו-רפואית',
   SESSION_KEY: 'ai-mentor-biorefua-session',
 };
