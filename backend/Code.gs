@@ -178,33 +178,56 @@ function logout(token) {
 }
 
 // -------------------------------------------------------------- גישה לגיליונות
+// מבנה העמודות של כל גיליון, במקום אחד. משמש גם ליצירה וגם לאימות - כדי
+// שהמערכת לא תכתוב בשקט לגיליון של מערכת אחרת עם עמודות בשמות דומים.
+const SHEET_SCHEMAS = {};
+SHEET_SCHEMAS[SHEET_USERS] = ['studentId', 'username', 'passHash', 'mustChangePassword', 'role',
+  'firstName', 'lastName', 'last4Id', 'birthDate', 'group', 'bodyPart', 'strategy', 'createdAt'];
+SHEET_SCHEMAS[SHEET_TOPICS] = ['weekNumber', 'topicText', 'setAt'];
+SHEET_SCHEMAS[SHEET_CHECKINS] = ['checkInId', 'studentId', 'weekNumber', 'date', 'image1Url', 'image2Url',
+  'studentSummary', 'transcriptJson', 'aiMemorySummary', 'mentorFeedback', 'score',
+  'teacherOverrideScore', 'teacherNote', 'docLink', 'sessionSeconds', 'status'];
+SHEET_SCHEMAS[SHEET_HELPCHATS] = ['logId', 'studentId', 'weekNumber', 'date', 'transcriptJson'];
+SHEET_SCHEMAS[SHEET_SESSIONS] = ['token', 'studentId', 'role', 'createdAt', 'expiresAt'];
+SHEET_SCHEMAS[SHEET_USAGE] = ['studentId', 'weekNumber', 'messageCount', 'lastMessageAt'];
+
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(name);
-  if (!sheet) sheet = createSheet(ss, name);
+  const sheet = ss.getSheetByName(name);
+  if (!sheet) return createSheet(ss, name);
+  assertSchema(sheet, name);
   return sheet;
+}
+
+/**
+ * נכשל ברעש אם הגיליון קיים אבל העמודות שלו אינן מה שהמערכת מצפה לו.
+ * בלי הבדיקה הזו, חיבור הסקריפט לגיליון של מערכת אחרת (שיש בה במקרה
+ * גיליון בשם Users) גורם לכתיבה בהזזת עמודות - נתונים שנראים תקינים
+ * בגיליון אבל נקראים שגוי, בלי שום הודעת שגיאה.
+ */
+function assertSchema(sheet, name) {
+  const expected = SHEET_SCHEMAS[name];
+  if (!expected) return;
+  const width = Math.max(expected.length, sheet.getLastColumn() || expected.length);
+  const actual = sheet.getRange(1, 1, 1, width).getValues()[0];
+  for (let i = 0; i < expected.length; i++) {
+    if (String(actual[i] || '').trim() !== expected[i]) {
+      throw new Error(
+        'הגיליון "' + name + '" קיים אך מבנה העמודות שלו שגוי (עמודה ' + (i + 1) +
+        ': נמצא "' + actual[i] + '", ציפינו ל-"' + expected[i] + '").\n' +
+        'זה קורה כשהסקריפט מחובר לגיליון של מערכת אחרת. יש לחבר את הסקריפט ' +
+        'לגיליון ריק וייעודי למערכת הזו בלבד - ראו README.');
+    }
+  }
 }
 
 function createSheet(ss, name) {
   const sheet = ss.insertSheet(name);
+  sheet.appendRow(SHEET_SCHEMAS[name]);
   if (name === SHEET_USERS) {
-    sheet.appendRow(['studentId', 'username', 'passHash', 'mustChangePassword', 'role', 'firstName', 'lastName',
-      'last4Id', 'birthDate', 'group', 'bodyPart', 'strategy', 'createdAt']);
     // mustChangePassword=true: סיסמת ברירת המחדל מתועדת ב-README ולכן ציבורית -
     // המערכת מחייבת להחליף אותה כבר בכניסה הראשונה של המורה.
     sheet.appendRow(['admin', 'admin', sha256('admin123'), true, 'admin', 'מורה', 'ראשי', '', '', '', '', '', new Date()]);
-  } else if (name === SHEET_TOPICS) {
-    sheet.appendRow(['weekNumber', 'topicText', 'setAt']);
-  } else if (name === SHEET_CHECKINS) {
-    sheet.appendRow(['checkInId', 'studentId', 'weekNumber', 'date', 'image1Url', 'image2Url', 'studentSummary',
-      'transcriptJson', 'aiMemorySummary', 'mentorFeedback', 'score', 'teacherOverrideScore', 'teacherNote',
-      'docLink', 'sessionSeconds', 'status']);
-  } else if (name === SHEET_HELPCHATS) {
-    sheet.appendRow(['logId', 'studentId', 'weekNumber', 'date', 'transcriptJson']);
-  } else if (name === SHEET_SESSIONS) {
-    sheet.appendRow(['token', 'studentId', 'role', 'createdAt', 'expiresAt']);
-  } else if (name === SHEET_USAGE) {
-    sheet.appendRow(['studentId', 'weekNumber', 'messageCount', 'lastMessageAt']);
   }
   sheet.setFrozenRows(1);
   return sheet;
