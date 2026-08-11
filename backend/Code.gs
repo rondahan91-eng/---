@@ -550,9 +550,31 @@ function enforceUsageLimits(studentId, weekNumber, gradedThisWeek) {
   }
 }
 
+/**
+ * שולף את המפתח ובודק שהוא נראה כמו מפתח Gemini תקין. בלי הבדיקה הזו,
+ * מפתח שהודבק עם רווח או טוקן מסוג אחר מגיע לגוגל ומקבל "API key not valid",
+ * שלא מרמז מה בעצם לא בסדר.
+ */
+function getGeminiApiKey() {
+  const raw = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!raw) throw new Error('לא הוגדר GEMINI_API_KEY ב-Script Properties (ראו README)');
+  const key = String(raw).trim();
+  if (key !== raw) {
+    // תיקון שקט של רווחים/שורה חדשה שנדבקו בהעתקה
+    PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', key);
+  }
+  if (key.indexOf('AIza') !== 0) {
+    throw new Error('המפתח שב-GEMINI_API_KEY אינו נראה כמו מפתח Gemini API. ' +
+      'מפתח תקין מתחיל ב-"AIza" ואורכו כ-39 תווים, ואילו הערך הנוכחי מתחיל ב-"' +
+      key.slice(0, 4) + '" (' + key.length + ' תווים).\n' +
+      'ייתכן שהועתק טוקן OAuth או מזהה אחר. צרו מפתח ב-aistudio.google.com/apikey ' +
+      'תחת האפשרות "Create API key", והדביקו אותו במלואו.');
+  }
+  return key;
+}
+
 function callGemini(systemPrompt, contents) {
-  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('לא הוגדר GEMINI_API_KEY ב-Script Properties (ראו README)');
+  const apiKey = getGeminiApiKey();
   const payload = {
     system_instruction: { parts: [{ text: systemPrompt }] },
     contents: contents,
@@ -582,8 +604,7 @@ function callGemini(systemPrompt, contents) {
  * שימושי כשגוגל מוציאה משימוש מודל וההודעה "no longer available" מופיעה.
  */
 function listAvailableModels() {
-  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('לא הוגדר GEMINI_API_KEY ב-Script Properties');
+  const apiKey = getGeminiApiKey();
   const res = UrlFetchApp.fetch(
     'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + apiKey,
     { muteHttpExceptions: true });
