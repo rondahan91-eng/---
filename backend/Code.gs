@@ -17,8 +17,15 @@ const SHEET_SESSIONS = 'Sessions';
 // תוקף טוקן התחברות. אחרי הזמן הזה נדרשת התחברות מחדש.
 const TOKEN_TTL_HOURS = 24;
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent';
+// מודל ברירת המחדל. אפשר לעקוף אותו בלי לגעת בקוד: Project Settings →
+// Script Properties → מאפיין בשם GEMINI_MODEL. שימושי כשגוגל מוציאה משימוש
+// מודל ישן (הרצת listAvailableModels תראה מה זמין למפתח שלכם).
+const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
+
+function geminiModel() {
+  return PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || DEFAULT_GEMINI_MODEL;
+}
 
 // -------------------------------------------------------------- כניסה ל-Web App
 function doPost(e) {
@@ -449,17 +456,47 @@ function callGemini(systemPrompt, contents) {
     contents: contents,
     generationConfig: { temperature: 0.6, maxOutputTokens: 1024 },
   };
-  const res = UrlFetchApp.fetch(GEMINI_URL + '?key=' + apiKey, {
+  const url = GEMINI_API_BASE + geminiModel() + ':generateContent?key=' + apiKey;
+  const res = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   });
   const data = JSON.parse(res.getContentText());
-  if (data.error) throw new Error('שגיאת Gemini: ' + data.error.message);
+  if (data.error) {
+    throw new Error('שגיאת Gemini (מודל: ' + geminiModel() + '): ' + data.error.message +
+      '\nהריצו את listAvailableModels בעורך ה-Apps Script כדי לראות אילו מודלים זמינים לכם.');
+  }
   const candidate = data.candidates && data.candidates[0];
   if (!candidate) throw new Error('Gemini לא החזיר תשובה (ייתכן שנחסם ע"י מסנני בטיחות)');
   return candidate.content.parts.map(p => p.text || '').join('');
+}
+
+/**
+ * כלי אבחון - להרצה ידנית מעורך ה-Apps Script בלבד (לא חשוף כ-API).
+ * בוחרים את הפונקציה בתפריט העליון, לוחצים ▶ Run, ואז פותחים את
+ * "יומן ביצוע / Execution log" כדי לראות אילו מודלים המפתח שלכם יכול להריץ.
+ * שימושי כשגוגל מוציאה משימוש מודל וההודעה "no longer available" מופיעה.
+ */
+function listAvailableModels() {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('לא הוגדר GEMINI_API_KEY ב-Script Properties');
+  const res = UrlFetchApp.fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + apiKey,
+    { muteHttpExceptions: true });
+  const data = JSON.parse(res.getContentText());
+  if (data.error) throw new Error('שגיאה בשליפת רשימת המודלים: ' + data.error.message);
+
+  const usable = (data.models || [])
+    .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') !== -1)
+    .map(m => m.name.replace('models/', ''));
+
+  Logger.log('המודל שמוגדר כרגע: ' + geminiModel());
+  Logger.log('נמצאו ' + usable.length + ' מודלים זמינים ליצירת תוכן:');
+  usable.forEach(name => Logger.log('  ' + name));
+  Logger.log('\nלהחלפה: Project Settings ← Script Properties ← מאפיין GEMINI_MODEL עם השם המבוקש.');
+  return usable;
 }
 
 // -------------------------------------------------------------- שמירת אירועי הערכה/עזרה
