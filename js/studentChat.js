@@ -68,6 +68,8 @@ export async function mountStudentChat(app, session, onLogout) {
     sessionStart: Date.now(),
     // העדפת תצוגה נשמרת בין כניסות, כדי שלא צריך לקפל מחדש בכל פעם
     railHidden: localStorage.getItem(RAIL_PREF_KEY) === '1',
+    taskModalOpen: false,
+    summaryDraft: '', // נשמר כדי שסגירת החלון לא תמחק מה שנכתב
   };
 
   render();
@@ -148,27 +150,54 @@ export async function mountStudentChat(app, session, onLogout) {
       </div>`;
   }
 
-  function taskStripHtml() {
-    if (state.submittedTask) return '';
+  /** כפתור צף בפינת הצ'אט - מחליף את הרצועה שגזלה גובה מהשיחה */
+  function taskFabHtml() {
+    if (state.submittedTask) {
+      return `<button class="task-fab done" id="task-fab" title="משימת השבוע הוגשה">
+          <span class="fab-icon">✓</span><span>משימת השבוע הוגשה</span>
+        </button>`;
+    }
+    return `<button class="task-fab pending" id="task-fab" title="פתיחת משימת השבוע">
+        <span class="fab-icon">📸</span><span>משימת שבוע ${ctx.weekNumber}</span>
+      </button>`;
+  }
+
+  function taskModalHtml() {
+    if (!state.taskModalOpen) return '';
+    if (state.submittedTask) {
+      return `
+      <div class="modal-veil" id="modal-veil">
+        <div class="modal">
+          <div class="modal-head">
+            <h3>משימת שבוע ${ctx.weekNumber}</h3>
+            <button class="modal-close" id="modal-close" title="סגירה">✕</button>
+          </div>
+          <p class="form-note">התמונות והסיכום לשבוע זה כבר נשלחו. אפשר להמשיך בשיחה.</p>
+        </div>
+      </div>`;
+    }
     return `
-    <div class="task-strip">
-      <div class="task-strip-head">
-        <b>משימת שבוע ${ctx.weekNumber}</b>
-        <span class="mini">— 2 תמונות + סיכום קצר. השליחה פותחת את החלק המוערך.</span>
+    <div class="modal-veil" id="modal-veil">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>משימת שבוע ${ctx.weekNumber}</h3>
+          <button class="modal-close" id="modal-close" title="סגירה">✕</button>
+        </div>
+        <p class="form-note">2 תמונות התקדמות + סיכום קצר. השליחה פותחת את החלק המוערך.</p>
+        <div class="tiles">
+          ${[0, 1].map(i => `
+            <label class="tile${state.slots[i] ? ' filled' : ''}">
+              ${state.slots[i]
+                ? `<img src="${state.slots[i]}" alt="תמונה ${i + 1}">`
+                : `<span class="ph">תמונה ${i + 1}<br>לחצו לבחירה</span>`}
+              <input type="file" class="slot-input" data-idx="${i}" accept="image/*">
+            </label>`).join('')}
+        </div>
+        <div class="field" style="margin:12px 0 10px;">
+          <textarea id="week-summary" rows="3" placeholder="מה עשית השבוע? (אילו תמונות אספת ולמה הן מתאימות לאסטרטגיה שלך)">${escapeHtml(state.summaryDraft || '')}</textarea>
+        </div>
+        <button type="button" id="start-graded-btn" style="width:100%;">שליחה והתחלת החלק המוערך</button>
       </div>
-      <div class="tiles">
-        ${[0, 1].map(i => `
-          <label class="tile${state.slots[i] ? ' filled' : ''}">
-            ${state.slots[i]
-              ? `<img src="${state.slots[i]}" alt="תמונה ${i + 1}">`
-              : `<span class="ph">תמונה ${i + 1}<br>לחצו לבחירה</span>`}
-            <input type="file" class="slot-input" data-idx="${i}" accept="image/*">
-          </label>`).join('')}
-      </div>
-      <div class="field" style="margin-bottom:10px;">
-        <textarea id="week-summary" rows="2" placeholder="מה עשית השבוע? (אילו תמונות אספת ולמה הן מתאימות לאסטרטגיה שלך)"></textarea>
-      </div>
-      <button type="button" id="start-graded-btn" style="width:100%;">שליחה והתחלת החלק המוערך</button>
     </div>`;
   }
 
@@ -199,9 +228,10 @@ export async function mountStudentChat(app, session, onLogout) {
           </div>
         </div>
 
+        ${taskFabHtml()}
+
         <div class="dock">
           <div class="dock-inner">
-            ${taskStripHtml()}
             <form class="composer" id="chat-form">
               <textarea id="chat-input" rows="1" placeholder="כתבו הודעה למנטור..." required></textarea>
               <button type="submit" id="send-btn">שליחה</button>
@@ -213,6 +243,7 @@ export async function mountStudentChat(app, session, onLogout) {
         </div>
       </main>
     </div>
+    ${taskModalHtml()}
     <div id="toast" class="toast"></div>`;
 
     wire();
@@ -229,6 +260,26 @@ export async function mountStudentChat(app, session, onLogout) {
       localStorage.setItem(RAIL_PREF_KEY, state.railHidden ? '1' : '0');
       render();
     });
+
+    document.getElementById('task-fab').addEventListener('click', () => {
+      state.taskModalOpen = true;
+      render();
+    });
+
+    const veil = document.getElementById('modal-veil');
+    if (veil) {
+      const close = () => {
+        const ta = document.getElementById('week-summary');
+        if (ta) state.summaryDraft = ta.value; // לא לאבד טיוטה בסגירה
+        state.taskModalOpen = false;
+        render();
+      };
+      document.getElementById('modal-close').addEventListener('click', close);
+      veil.addEventListener('click', (e) => { if (e.target === veil) close(); });
+      document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(); }
+      });
+    }
 
     document.querySelectorAll('.slot-input').forEach(input => {
       input.addEventListener('change', async () => {
@@ -258,6 +309,8 @@ export async function mountStudentChat(app, session, onLogout) {
           return { base64, mimeType: meta.match(/data:(.*);base64/)[1] };
         });
         state.submittedTask = true;
+        state.taskModalOpen = false;
+        state.summaryDraft = '';
         send(summary);
       });
     }
