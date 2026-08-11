@@ -37,7 +37,8 @@ export async function mountTeacherDashboard(app, session, onLogout) {
                   <tbody>
                     ${state.students.map(s => `
                       <tr>
-                        <td>${escapeHtml(s.firstName)} ${escapeHtml(s.lastName || '')}</td>
+                        <td>${escapeHtml(`${s.firstName || ''} ${s.lastName || ''}`.trim()
+                          || `⚠️ רשומה חסרת שם (${s.username || s.studentId})`)}</td>
                         <td>${escapeHtml(s.group || '—')}</td>
                         <td>${escapeHtml(s.bodyPart || '—')}</td>
                         <td>${escapeHtml(s.strategy || '—')}</td>
@@ -46,7 +47,7 @@ export async function mountTeacherDashboard(app, session, onLogout) {
                         <td>${s.doneThisWeek ? '<span class="pill ok">בוצע</span>' : '<span class="pill bad">חסר</span>'}</td>
                         <td style="white-space:nowrap;">
                           <button class="secondary view-student-btn" data-id="${s.studentId}" style="padding:5px 10px;font-size:12px;">תמלולים</button>
-                          <button class="secondary reset-pw-btn" data-id="${s.studentId}" data-name="${escapeHtml(s.firstName)}" style="padding:5px 10px;font-size:12px;">🔑</button>
+                          <button class="secondary reset-pw-btn" data-id="${s.studentId}" data-name="${escapeHtml(s.firstName || s.username || '')}" style="padding:5px 10px;font-size:12px;">🔑</button>
                         </td>
                       </tr>`).join('')}
                   </tbody>
