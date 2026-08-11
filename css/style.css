@@ -41,7 +41,7 @@
 
   --font: 'Segoe UI', 'Assistant', 'Rubik', Arial, sans-serif;
   --num: 'Segoe UI', 'Consolas', monospace;
-  --rail-w: 296px;
+  --rail-w: 264px;
 }
 
 * { box-sizing: border-box; }
@@ -155,7 +155,13 @@ label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2)
   flex: 1; display: grid;
   grid-template-columns: var(--rail-w) 1fr;
   min-height: 100vh; max-height: 100vh;
+  transition: grid-template-columns .18s ease;
 }
+/* מצב מסך מלא לשיחה - המסילה מתקפלת והצ'אט מקבל את כל הרוחב.
+   חשוב: המסילה יוצאת מזרימת הגריד (display:none), ולכן צריך עמודה אחת בלבד -
+   אחרת ה-main היה נופל לעמודה הראשונה שרוחבה 0. */
+.shell.rail-hidden { grid-template-columns: 1fr; }
+.shell.rail-hidden .rail { display: none; }
 
 .rail {
   background: var(--surface); border-inline-start: 1px solid var(--line);
@@ -242,9 +248,14 @@ label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2)
 .topic-line b { color: var(--ink); font-weight: 600; }
 .head-status { margin-inline-start: auto; }
 
-.stream { flex: 1; overflow-y: auto; padding: 24px 26px 8px; display: flex; flex-direction: column; gap: 14px; }
+.stream { flex: 1; overflow-y: auto; padding: 24px 28px 8px; }
+/* עמודת שיחה ממורכזת ברוחב קריא - במקום להיצמד לקצה המסילה */
+.stream-inner {
+  max-width: 940px; margin: 0 auto; width: 100%;
+  display: flex; flex-direction: column; gap: 14px; min-height: 100%;
+}
 
-.turn { display: flex; gap: 11px; max-width: 760px; }
+.turn { display: flex; gap: 11px; max-width: 86%; }
 .turn.me { flex-direction: row-reverse; margin-inline-start: auto; }
 .turn .who-mark {
   width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
@@ -282,7 +293,9 @@ label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2)
 @keyframes bounce { 0%,60%,100% { opacity:.3; transform: translateY(0);} 30% { opacity:1; transform: translateY(-4px);} }
 
 /* ---------- אזור הקלט התחתון ---------- */
-.dock { border-top: 1px solid var(--line); background: var(--surface); padding: 14px 26px 16px; }
+.dock { border-top: 1px solid var(--line); background: var(--surface); padding: 14px 28px 16px; }
+/* אותו רוחב כמו עמודת השיחה, כדי שתיבת הכתיבה תהיה מיושרת איתה */
+.dock-inner { max-width: 940px; margin: 0 auto; width: 100%; }
 
 /* רצועת משימת השבוע - נפתחת מעל תיבת הכתיבה */
 .task-strip {
@@ -312,9 +325,18 @@ label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2)
 .composer button { height: 48px; padding: 0 22px; border-radius: 14px; }
 .dock-note { font-size: 11.5px; color: var(--ink-3); margin-top: 8px; text-align: center; }
 
+/* כפתור קיפול המסילה */
+.rail-toggle {
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+  border-radius: 9px; padding: 6px 11px; font-size: 15px; line-height: 1; box-shadow: none;
+}
+.rail-toggle:hover { background: var(--surface-2); color: var(--brand-2); border-color: var(--brand); }
+
 /* ---------- מובייל: המסילה הופכת לסרגל עליון ---------- */
-.rail-toggle { display: none; }
 @media (max-width: 980px) {
+  .rail-toggle { display: none; }
+  .shell.rail-hidden { grid-template-columns: 1fr; }
+  .shell.rail-hidden .rail { display: grid; }
   .shell { grid-template-columns: 1fr; max-height: none; }
   .main { max-height: none; }
   .rail {

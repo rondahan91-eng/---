@@ -10,6 +10,8 @@ import { getStudentContext, sendMentorMessage } from './api.js';
 // ו-Gemini מחייב על תמונות לפי רזולוציה - ההקטנה חוסכת עלות טוקנים, זמן
 // המתנה ונפח ב-Drive. 1024px נשמר בכוונה גבוה מספיק כדי שקווי שבר ופרטים
 // עדינים בצילום הרנטגן יישארו ניתנים לזיהוי.
+const RAIL_PREF_KEY = 'ai-mentor-rail-hidden';
+
 const MAX_IMAGE_DIM = 1024;
 const IMAGE_QUALITY = 0.85;
 const SKIP_RESIZE_UNDER_BYTES = 300 * 1024;
@@ -64,6 +66,8 @@ export async function mountStudentChat(app, session, onLogout) {
     submittedTask: ctx.gradedThisWeek,
     sending: false,
     sessionStart: Date.now(),
+    // העדפת תצוגה נשמרת בין כניסות, כדי שלא צריך לקפל מחדש בכל פעם
+    railHidden: localStorage.getItem(RAIL_PREF_KEY) === '1',
   };
 
   render();
@@ -174,10 +178,12 @@ export async function mountStudentChat(app, session, onLogout) {
       : (state.submittedTask ? '<span class="pill warn">בתהליך הערכה</span>' : '<span class="pill bad">טרם בוצע</span>');
 
     app.innerHTML = `
-    <div class="shell">
+    <div class="shell${state.railHidden ? ' rail-hidden' : ''}">
       ${railHtml()}
       <main class="main">
         <header class="stream-head">
+          <button class="rail-toggle" id="rail-toggle"
+            title="${state.railHidden ? 'הצגת פרטי המחקר' : 'הסתרת פרטי המחקר להרחבת השיחה'}">☰</button>
           <span class="week-pill">שבוע ${ctx.weekNumber}</span>
           <span class="topic-line">${ctx.topicText
             ? `נושא השבוע: <b>${escapeHtml(ctx.topicText)}</b>`
@@ -186,20 +192,24 @@ export async function mountStudentChat(app, session, onLogout) {
         </header>
 
         <div class="stream" id="stream">
-          ${state.history.length ? state.history.map(turnHtml).join('') : emptyStateHtml()}
-          ${state.sending ? `<div class="turn ai"><div class="who-mark">${logoMark(18)}</div>
-            <div class="bubble thinking"><i></i><i></i><i></i></div></div>` : ''}
+          <div class="stream-inner">
+            ${state.history.length ? state.history.map(turnHtml).join('') : emptyStateHtml()}
+            ${state.sending ? `<div class="turn ai"><div class="who-mark">${logoMark(18)}</div>
+              <div class="bubble thinking"><i></i><i></i><i></i></div></div>` : ''}
+          </div>
         </div>
 
         <div class="dock">
-          ${taskStripHtml()}
-          <form class="composer" id="chat-form">
-            <textarea id="chat-input" rows="1" placeholder="כתבו הודעה למנטור..." required></textarea>
-            <button type="submit" id="send-btn">שליחה</button>
-          </form>
-          <div class="dock-note">${ctx.gradedThisWeek
-            ? 'החלק המוערך של השבוע הסתיים — מכאן השיחה חופשית ואינה נמדדת.'
-            : 'שאלות חופשיות אינן נמדדות. רק שאלות המנטור המסומנות מזכות בציון.'}</div>
+          <div class="dock-inner">
+            ${taskStripHtml()}
+            <form class="composer" id="chat-form">
+              <textarea id="chat-input" rows="1" placeholder="כתבו הודעה למנטור..." required></textarea>
+              <button type="submit" id="send-btn">שליחה</button>
+            </form>
+            <div class="dock-note">${ctx.gradedThisWeek
+              ? 'החלק המוערך של השבוע הסתיים — מכאן השיחה חופשית ואינה נמדדת.'
+              : 'שאלות חופשיות אינן נמדדות. רק שאלות המנטור המסומנות מזכות בציון.'}</div>
+          </div>
         </div>
       </main>
     </div>
@@ -213,6 +223,12 @@ export async function mountStudentChat(app, session, onLogout) {
   // ---------------------------------------------------------------- אירועים
   function wire() {
     document.getElementById('logout-btn').addEventListener('click', onLogout);
+
+    document.getElementById('rail-toggle').addEventListener('click', () => {
+      state.railHidden = !state.railHidden;
+      localStorage.setItem(RAIL_PREF_KEY, state.railHidden ? '1' : '0');
+      render();
+    });
 
     document.querySelectorAll('.slot-input').forEach(input => {
       input.addEventListener('change', async () => {
