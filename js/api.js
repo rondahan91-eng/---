@@ -126,7 +126,7 @@ async function callLocal(action, payload) {
     const { studentId, newPassword } = payload;
     const u = findStudent(db, studentId);
     u.passHash = await sha256Hex(newPassword);
-    u.mustChangePassword = true;
+    u.mustChangePassword = false;
     saveDB(db);
     return { ok: true };
   }
@@ -226,7 +226,7 @@ async function callLocal(action, payload) {
       }
       db.users.push({
         studentId: 's_' + Date.now() + Math.random().toString(36).slice(2, 6),
-        username: s.username, passHash: await sha256Hex(s.password), mustChangePassword: true, role: 'student',
+        username: s.username, passHash: await sha256Hex(s.password), mustChangePassword: false, role: 'student',
         firstName: s.firstName, lastName: s.lastName, group: s.group, bodyPart: s.bodyPart, strategy: s.strategy,
       });
       existingUsernames.push(s.username);

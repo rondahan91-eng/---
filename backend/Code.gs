@@ -225,9 +225,7 @@ function createSheet(ss, name) {
   const sheet = ss.insertSheet(name);
   sheet.appendRow(SHEET_SCHEMAS[name]);
   if (name === SHEET_USERS) {
-    // mustChangePassword=true: סיסמת ברירת המחדל מתועדת ב-README ולכן ציבורית -
-    // המערכת מחייבת להחליף אותה כבר בכניסה הראשונה של המורה.
-    sheet.appendRow(['admin', 'admin', sha256('admin123'), true, 'admin', 'מורה', 'ראשי', '', '', '', '', '', new Date()]);
+    sheet.appendRow(['admin', 'admin', sha256('admin123'), false, 'admin', 'מורה', 'ראשי', '', '', '', '', '', new Date()]);
   }
   sheet.setFrozenRows(1);
   return sheet;
@@ -282,7 +280,8 @@ function changePassword(studentId, newPassword) {
 }
 
 function resetStudentPassword(studentId, newPassword) {
-  // איפוס ע"י המורה (למשל אם תלמיד שכח סיסמה) - מחייב החלפה נוספת בכניסה הבאה
+  // איפוס ע"י המורה (למשל אם תלמיד שכח סיסמה). הסיסמה החדשה תקפה מיד -
+  // אין חיוב להחליף אותה בכניסה הבאה.
   const sheet = getSheet(SHEET_USERS);
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
@@ -290,7 +289,7 @@ function resetStudentPassword(studentId, newPassword) {
   for (let r = 1; r < values.length; r++) {
     if (values[r][0] === studentId) {
       sheet.getRange(r + 1, col('passHash')).setValue(sha256(newPassword));
-      sheet.getRange(r + 1, col('mustChangePassword')).setValue(true);
+      sheet.getRange(r + 1, col('mustChangePassword')).setValue(false);
       return { ok: true };
     }
   }
@@ -320,7 +319,7 @@ function importRoster(students) {
       return;
     }
     const studentId = 's_' + Utilities.getUuid().slice(0, 8);
-    usersSheet.appendRow([studentId, s.username, sha256(s.password), true, 'student', s.firstName, s.lastName || '',
+    usersSheet.appendRow([studentId, s.username, sha256(s.password), false, 'student', s.firstName, s.lastName || '',
       s.last4Id || '', s.birthDateLabel || '', s.group || '', s.bodyPart || '', s.strategy || '', new Date()]);
     existing.push({ username: s.username }); // מונע כפילויות בתוך אותו קובץ
     results.push({ firstName: s.firstName, username: s.username, ok: true, status: 'נוצר' });

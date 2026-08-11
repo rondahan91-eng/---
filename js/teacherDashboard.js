@@ -139,7 +139,7 @@ export async function mountTeacherDashboard(app, session, onLogout) {
 
     document.querySelectorAll('.reset-pw-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const newPw = prompt('סיסמה זמנית חדשה עבור ' + btn.dataset.name + ' (התלמיד/ה יחויב/תחויב להחליף בכניסה הבאה):');
+        const newPw = prompt('סיסמה חדשה עבור ' + btn.dataset.name + ' (תקפה מיד):');
         if (!newPw) return;
         try {
           await resetStudentPassword(btn.dataset.id, newPw);

@@ -1,7 +1,8 @@
-// מסך התחברות - פאנל מפוצל (אזור מיתוג + טופס), כולל חיוב החלפת סיסמה
-// בכניסה ראשונה (FR-A3).
+// מסך התחברות - פאנל מפוצל (אזור מיתוג + טופס).
+// אין חיוב להחליף סיסמה בכניסה הראשונה: התלמיד/ה נשאר/ת עם הסיסמה שהמערכת
+// גזרה מתאריך הלידה, והמורה עם סיסמת ברירת המחדל.
 import { logoMark } from './ui.js';
-import { authenticateUser, changePassword, isDevMode } from './api.js';
+import { authenticateUser, isDevMode } from './api.js';
 
 function artPanel() {
   return `
@@ -58,8 +59,7 @@ export function renderLogin(app, onLoggedIn) {
     btn.textContent = 'מתחבר...';
     try {
       const user = await authenticateUser(username, password);
-      if (user.mustChangePassword) renderForcedPasswordChange(app, user, onLoggedIn);
-      else onLoggedIn(user);
+      onLoggedIn(user);
     } catch (e2) {
       err.textContent = e2.message || 'שגיאת התחברות';
       err.classList.add('show');
@@ -69,50 +69,3 @@ export function renderLogin(app, onLoggedIn) {
   });
 }
 
-function renderForcedPasswordChange(app, user, onLoggedIn) {
-  app.innerHTML = `
-  <div class="auth">
-    ${artPanel()}
-    <div class="auth-form">
-      <form class="auth-box" id="pw-form">
-        <h2>בחירת סיסמה אישית</h2>
-        <p class="lede">זו הכניסה הראשונה שלך. הסיסמה הזמנית מבוססת על תאריך הלידה —
-          יש להחליף אותה בסיסמה שרק את/ה מכיר/ה.</p>
-        <div class="login-error" id="pw-error"></div>
-        <div class="field">
-          <label for="new-password">סיסמה חדשה</label>
-          <input type="password" id="new-password" autocomplete="new-password" required minlength="4">
-        </div>
-        <div class="field">
-          <label for="new-password-confirm">אימות סיסמה</label>
-          <input type="password" id="new-password-confirm" autocomplete="new-password" required minlength="4">
-        </div>
-        <button type="submit">שמירה והמשך</button>
-      </form>
-    </div>
-  </div>`;
-
-  const form = document.getElementById('pw-form');
-  const err = document.getElementById('pw-error');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    err.classList.remove('show');
-    const p1 = document.getElementById('new-password').value;
-    const p2 = document.getElementById('new-password-confirm').value;
-    if (p1 !== p2) {
-      err.textContent = 'הסיסמאות אינן תואמות';
-      err.classList.add('show');
-      return;
-    }
-    const btn = form.querySelector('button');
-    btn.disabled = true;
-    try {
-      await changePassword(user.studentId, p1);
-      onLoggedIn(Object.assign({}, user, { mustChangePassword: false }));
-    } catch (e2) {
-      err.textContent = e2.message || 'שגיאה בעדכון הסיסמה';
-      err.classList.add('show');
-      btn.disabled = false;
-    }
-  });
-}
