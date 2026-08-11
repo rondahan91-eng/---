@@ -13,9 +13,19 @@ const SHEET_TOPICS = 'WeeklyTopics';
 const SHEET_CHECKINS = 'WeeklyCheckIns';
 const SHEET_HELPCHATS = 'HelpChatLog';
 const SHEET_SESSIONS = 'Sessions';
+const SHEET_USAGE = 'Usage';
 
 // תוקף טוקן התחברות. אחרי הזמן הזה נדרשת התחברות מחדש.
 const TOKEN_TTL_HOURS = 24;
+
+// ---- מגבלות שימוש (הגנה תקציבית) ----------------------------------------
+// אלה מגבלות *שרת* בכוונה. הנחיה בפרומפט לא מגנה על התקציב: אפשר לשכנע את
+// המודל לחרוג ממנה, וגם סירוב עולה כסף. רק המגבלות כאן חוסמות בפועל.
+const WEEKLY_MESSAGE_QUOTA = 80;          // הודעות לתלמיד/ה בשבוע
+const GRADED_RESERVE = 10;                // רזרבה כדי שתמיד אפשר יהיה להשלים את החלק המוערך
+const MIN_SECONDS_BETWEEN_MESSAGES = 3;   // בלימת סקריפטים אוטומטיים
+const MAX_HISTORY_TURNS = 16;             // כמה תורות נשלחות ל-Gemini (בולם תפיחת עלות)
+const MAX_MESSAGE_CHARS = 4000;           // בולם הדבקת קבצי קוד ענקיים
 
 // מודל ברירת המחדל. אפשר לעקוף אותו בלי לגעת בקוד: Project Settings →
 // Script Properties → מאפיין בשם GEMINI_MODEL. שימושי כשגוגל מוציאה משימוש
@@ -193,6 +203,8 @@ function createSheet(ss, name) {
     sheet.appendRow(['logId', 'studentId', 'weekNumber', 'date', 'transcriptJson']);
   } else if (name === SHEET_SESSIONS) {
     sheet.appendRow(['token', 'studentId', 'role', 'createdAt', 'expiresAt']);
+  } else if (name === SHEET_USAGE) {
+    sheet.appendRow(['studentId', 'weekNumber', 'messageCount', 'lastMessageAt']);
   }
   sheet.setFrozenRows(1);
   return sheet;
@@ -405,6 +417,13 @@ function buildSystemPrompt(ctx) {
     '3. מענה מקצועי ומדויק על שאלות בתחום הרפואה והדימות הרפואי (אנטומיה, פיזיקת קרינת',
     '   רנטגן, מינוח), ברמה המתאימה לתלמיד תיכון.',
     'במצב ב\' אל תזכיר ציונים ואל תיתן ציון.',
+    '',
+    'לגבי היקף העזרה: היה נדיב ופרשני לטובת התלמיד. שאלות על הצגת התוצאות, על ניתוח',
+    'נתונים, על כלים שהוא משתמש בהם או על רקע רפואי - כולן בתחום, גם אם אינן נוגעות',
+    'ישירות לרנטגן. רק אם הבקשה ברור שאין לה קשר לפרויקט (למשל: לכתוב עבורו אתר שלם,',
+    'שיעורי בית במקצוע אחר, או משימת תכנות שאינה חלק מהמחקר) - אמור זאת **פעם אחת**,',
+    'במשפט קצר ונעים, והצע במה כן תוכל לעזור. אל תחזור על הסירוב בהודעות הבאות ואל',
+    'תפתח בכל תשובה בתזכורת על גבולות - זה מעיק ופוגע בשיחה.',
   ].join('\n');
 }
 
@@ -416,9 +435,18 @@ function buildSystemPrompt(ctx) {
  */
 function sendMentorMessage(studentId, history, images, elapsedSeconds) {
   const ctx = getStudentContext(studentId);
+
+  const lastTurn = (history || [])[history.length - 1];
+  if (lastTurn && String(lastTurn.text || '').length > MAX_MESSAGE_CHARS) {
+    throw new Error('ההודעה ארוכה מדי (עד ' + MAX_MESSAGE_CHARS + ' תווים). נסו לקצר או לפצל אותה.');
+  }
+  enforceUsageLimits(studentId, ctx.weekNumber, ctx.gradedThisWeek);
+
   const systemPrompt = buildSystemPrompt(ctx);
 
-  const contents = (history || []).map((turn, idx) => {
+  // שולחים ל-Gemini רק חלון מההיסטוריה. התור הראשון נשמר תמיד כי אליו מצורפות
+  // התמונות והסיכום השבועי - בלעדיו החלק המוערך מאבד את ההקשר שלו.
+  const contents = trimHistory(history || []).map((turn, idx) => {
     const parts = [{ text: turn.text }];
     if (idx === 0 && images && images.length && !ctx.gradedThisWeek) {
       images.forEach(img => {
@@ -446,6 +474,52 @@ function sendMentorMessage(studentId, history, images, elapsedSeconds) {
     appendHelpChatTurn(studentId, ctx.weekNumber, history.concat([{ role: 'model', text: visibleText }]));
   }
   return result;
+}
+
+/** משאיר את התור הראשון (תמונות + סיכום שבועי) ואת חלון התורות האחרון. */
+function trimHistory(history) {
+  if (history.length <= MAX_HISTORY_TURNS) return history;
+  return [history[0]].concat(history.slice(history.length - (MAX_HISTORY_TURNS - 1)));
+}
+
+/**
+ * מכסה שבועית + הגבלת קצב, לכל תלמיד/ה. עטוף ב-LockService כי בלי נעילה
+ * אפשר לעקוף את המונה פשוט ע"י שליחת בקשות במקביל - וזה בדיוק התרחיש
+ * שההגנה הזו נועדה לחסום.
+ */
+function enforceUsageLimits(studentId, weekNumber, gradedThisWeek) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getSheet(SHEET_USAGE);
+    const row = sheetToObjects(sheet)
+      .find(r => r.studentId === studentId && Number(r.weekNumber) === Number(weekNumber));
+    const now = new Date();
+
+    if (!row) {
+      sheet.appendRow([studentId, weekNumber, 1, now]);
+      return;
+    }
+
+    const last = row.lastMessageAt ? new Date(row.lastMessageAt) : null;
+    if (last && (now.getTime() - last.getTime()) / 1000 < MIN_SECONDS_BETWEEN_MESSAGES) {
+      throw new Error('רגע אחד - נא להמתין כמה שניות בין הודעות.');
+    }
+
+    // כל עוד החלק המוערך של השבוע לא הושלם, שומרים רזרבה כדי שתלמיד/ה
+    // שמיצה/תה את המכסה בשיחה חופשית עדיין יוכל/תוכל לקבל ציון.
+    const count = Number(row.messageCount) || 0;
+    const ceiling = gradedThisWeek ? WEEKLY_MESSAGE_QUOTA : WEEKLY_MESSAGE_QUOTA + GRADED_RESERVE;
+    if (count >= ceiling) {
+      throw new Error('הגעת למכסת ההודעות השבועית (' + WEEKLY_MESSAGE_QUOTA +
+        '). המכסה מתאפסת בשבוע הבא. אם צריך יותר - דברו עם המורה.');
+    }
+
+    sheet.getRange(row.__row, 3).setValue(count + 1);
+    sheet.getRange(row.__row, 4).setValue(now);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function callGemini(systemPrompt, contents) {
