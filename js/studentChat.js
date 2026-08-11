@@ -6,6 +6,40 @@
 import { escapeHtml, toast, logoMark } from './ui.js';
 import { getStudentContext, sendMentorMessage } from './api.js';
 
+// הקטנת תמונות לפני השליחה. צילומי טלפון/מסך מגיעים לעיתים במגה-בייטים,
+// ו-Gemini מחייב על תמונות לפי רזולוציה - ההקטנה חוסכת עלות טוקנים, זמן
+// המתנה ונפח ב-Drive. 1024px נשמר בכוונה גבוה מספיק כדי שקווי שבר ופרטים
+// עדינים בצילום הרנטגן יישארו ניתנים לזיהוי.
+const MAX_IMAGE_DIM = 1024;
+const IMAGE_QUALITY = 0.85;
+const SKIP_RESIZE_UNDER_BYTES = 300 * 1024;
+
+function downscaleImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('לא הצלחתי לקרוא את הקובץ'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('הקובץ אינו תמונה תקינה'));
+      img.onload = () => {
+        const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.width, img.height));
+        // תמונה שכבר קטנה ממילא - משאירים כפי שהיא, בלי מעבר מיותר דרך JPEG
+        if (scale === 1 && file.size <= SKIP_RESIZE_UNDER_BYTES) {
+          resolve(reader.result);
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', IMAGE_QUALITY));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 const STRATEGY_BLURB = {
   'תקן': 'נתונים אידיאליים — התמונות הברורות והמאוזנות ביותר',
   'הטיות': 'מאגר לא מאוזן — לחקר GIGO והטיה בנתונים',
@@ -181,12 +215,17 @@ export async function mountStudentChat(app, session, onLogout) {
     document.getElementById('logout-btn').addEventListener('click', onLogout);
 
     document.querySelectorAll('.slot-input').forEach(input => {
-      input.addEventListener('change', () => {
+      input.addEventListener('change', async () => {
         const file = input.files && input.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => { state.slots[Number(input.dataset.idx)] = reader.result; render(); };
-        reader.readAsDataURL(file);
+        const idx = Number(input.dataset.idx);
+        try {
+          state.slots[idx] = await downscaleImage(file);
+        } catch (err) {
+          toast('שגיאה בטעינת התמונה: ' + err.message, true);
+          return;
+        }
+        render();
       });
     });
 
