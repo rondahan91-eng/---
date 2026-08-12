@@ -114,6 +114,9 @@
   <div id="results">
     <div class="card">
       <h2>תוצאות</h2>
+      <div id="classWarn" style="display:none;background:var(--warn-soft);
+           border:1px solid #fde68a;border-radius:10px;padding:12px 15px;
+           font-size:13px;color:var(--warn);margin-bottom:16px"></div>
       <div class="grid">
         <div>
           <table class="cm">
@@ -302,10 +305,37 @@ function render(){
   $('cTN').firstChild.textContent = TN;
 
   const pct = (a,b) => b ? Math.round(100*a/b) + '%' : '—';
-  $('mAcc').textContent  = pct(TP+TN, TP+TN+FP+FN);
+  const nAb = TP + FN, nNo = TN + FP;
+
+  // ערכת מבחן חד-מחלקתית: חלק מהמדדים מובטחים מבנית ולכן חסרי משמעות.
+  // עדיף להסתיר אותם מאשר להציג מספר יפה שאינו מודד דבר.
+  const onlyAbnormal = nAb > 0 && nNo === 0;
+  const onlyNormal   = nNo > 0 && nAb === 0;
+  const warn = $('classWarn');
+
+  if (onlyAbnormal || onlyNormal) {
+    const present = onlyAbnormal ? 'חריגות' : 'תקינות';
+    const valid   = onlyAbnormal ? 'הרגישות' : 'הספציפיות';
+    const hidden  = onlyAbnormal
+      ? 'ה"דיוק החיובי" היה יוצא 100% תמיד — אין תמונות תקינות שמהן תיווצר אזעקת שווא'
+      : 'ה"דיוק החיובי" אינו מוגדר — המודל לא יכול לצדוק או לטעות בזיהוי חריג';
+    warn.style.display = 'block';
+    warn.innerHTML = `<b>ערכת המבחן מכילה תמונות ${present} בלבד.</b><br>
+      רק <b>${valid}</b> נמדדת כאן בפועל. שאר המדדים הוסתרו: ${hidden},
+      וה"דיוק הכולל" זהה ל${valid} ולכן אינו מוסיף מידע.<br>
+      למדידה מלאה צריך את שתי המחלקות — תיקיית <code>benchmark</code>
+      שנבנתה אוטומטית מכילה 50 מכל סוג.`;
+  } else {
+    warn.style.display = 'none';
+  }
+
   $('mSens').textContent = pct(TP, TP+FN);
   $('mSpec').textContent = pct(TN, TN+FP);
-  $('mPrec').textContent = pct(TP, TP+FP);
+  // בשני המקרים החד-מחלקתיים ה"דיוק החיובי" מובטח מבנית (100% כשאין תקינות,
+  // 0% כשאין חריגות) ולכן אינו מודד דבר - מסתירים בשניהם.
+  const single = onlyAbnormal || onlyNormal;
+  $('mAcc').textContent  = single ? '—' : pct(TP+TN, TP+TN+FP+FN);
+  $('mPrec').textContent = single ? '—' : pct(TP, TP+FP);
 
   $('tradeoff').innerHTML = FN > FP
     ? `בסף הנוכחי המודל <b>מחמיץ ${FN} מקרים חריגים</b> ומקים ${FP} אזעקות שווא. ` +
