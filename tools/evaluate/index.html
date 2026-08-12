@@ -209,7 +209,13 @@ $('benchFiles').addEventListener('change', e => {
     let truth = null;
     if (parent.includes('abnormal') || parent.includes('positive')) truth = 'abnormal';
     else if (parent.includes('normal') || parent.includes('negative')) truth = 'normal';
-    if (truth) benchList.push({ file: f, truth, name: f.name });
+    // חשוב: הנתיב היחסי ולא רק שם הקובץ. ב-MURA כל מחקר מכיל image1.png,
+    // image2.png - שמות שחוזרים על עצמם בין מטופלים. בלי הנתיב אי אפשר לדעת
+    // באיזו תמונה מדובר, וניתוח השגיאות הופך לבלתי אפשרי.
+    const rel = f.webkitRelativePath || f.name;
+    // מקצרים: מוותרים על שם תיקיית הבסיס ועל תיקיית התווית
+    const label = rel.split('/').slice(-3).join('/');
+    if (truth) benchList.push({ file: f, truth, name: label, fullPath: rel });
   }
   const nAb = benchList.filter(b => b.truth === 'abnormal').length;
   const nNo = benchList.length - nAb;
@@ -249,7 +255,8 @@ $('runBtn').addEventListener('click', async () => {
       const item = benchList[i];
       const img = await fileToImage(item.file);
       const p = await model.predict(img);
-      predictions.push({ name: item.name, truth: item.truth, score: p[abnIdx].probability });
+      predictions.push({ name: item.name, fullPath: item.fullPath,
+                         truth: item.truth, score: p[abnIdx].probability });
       if (i % 5 === 0) setStatus(`מריץ... ${i + 1}/${benchList.length}`);
     }
     setStatus(`הושלם: ${predictions.length} תמונות נבדקו.`);
@@ -323,10 +330,12 @@ function render(){
 // ---- ייצוא --------------------------------------------------------------
 $('csvBtn').addEventListener('click', () => {
   const t = parseFloat($('thr').value);
-  const rows = [['image','true_label','predicted_label','abnormal_score','threshold','correct']];
+  const rows = [['image_path','true_label','predicted_label','abnormal_score','threshold','correct']];
   for (const p of predictions) {
     const pred = p.score >= t ? 'abnormal' : 'normal';
-    rows.push([p.name, p.truth, pred, p.score.toFixed(4), t.toFixed(2), pred===p.truth ? '1':'0']);
+    // הנתיב המלא, מוקף במרכאות - הוא מכיל '/' ועלול להכיל פסיקים
+    rows.push([`"${p.fullPath || p.name}"`, p.truth, pred,
+               p.score.toFixed(4), t.toFixed(2), pred===p.truth ? '1':'0']);
   }
   const csv = '﻿' + rows.map(r => r.join(',')).join('\n');
   const a = document.createElement('a');
