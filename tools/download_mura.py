@@ -185,6 +185,10 @@ def verify():
 if __name__ == '__main__':
     if '--check' in sys.argv:
         check()
+    elif '--move-only' in sys.argv:
+        # להשלמת העברה שנקטעה: מעביר את מה שכבר ירד, בלי להוריד עוד
+        _move_to_final()
+        verify()
     elif '--verify-only' in sys.argv:
         verify()
     else:
