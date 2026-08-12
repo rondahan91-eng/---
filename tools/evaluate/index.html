@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>כלי הערכת מודל · AI Mentor</title>
+<style>
+  :root{
+    --bg:#eef3f7; --surface:#fff; --line:#e0e9f0; --line2:#ccdae5;
+    --ink:#0d1f2b; --ink2:#4a6478; --ink3:#8aa2b3;
+    --brand:#0891b2; --brand2:#0e7490; --brand-soft:#e6fafd;
+    --ok:#059669; --ok-soft:#e9fbf3; --warn:#b45309; --warn-soft:#fff8ec;
+    --err:#dc2626; --err-soft:#fef2f2;
+    --r:14px; --sh:0 2px 10px rgba(13,31,43,.07);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:'Segoe UI','Assistant',Arial,sans-serif;line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .lede{color:var(--ink2);font-size:14px;margin:0 0 22px}
+  .card{background:var(--surface);border:1px solid var(--line);
+        border-radius:var(--r);box-shadow:var(--sh);padding:20px;margin-bottom:18px}
+  .card h2{font-size:15px;margin:0 0 12px}
+  .step{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+  .num{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;
+       display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:2px}
+  .num.done{background:var(--ok)}
+  label.pick{display:block;font-size:13px;color:var(--ink2);margin-bottom:6px;font-weight:600}
+  input[type=file]{font:inherit;font-size:13px;background:var(--bg);border:1px solid var(--line2);
+                   border-radius:9px;padding:9px 11px;width:100%;max-width:520px}
+  button{font:inherit;font-weight:600;font-size:14.5px;cursor:pointer;border:none;
+         border-radius:10px;background:var(--brand2);color:#fff;padding:11px 22px}
+  button:hover{background:var(--brand)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .hint{font-size:12.5px;color:var(--ink3);margin-top:6px}
+  .status{font-size:13.5px;color:var(--ink2);margin-top:12px;min-height:20px}
+  .err{color:var(--err);background:var(--err-soft);border:1px solid #fecaca;
+       border-radius:9px;padding:9px 12px;font-size:13px;margin-top:10px}
+
+  /* ---- תוצאות ---- */
+  #results{display:none}
+  .grid{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:start}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  table.cm{border-collapse:collapse;font-size:14px}
+  table.cm th{font-weight:600;color:var(--ink2);font-size:12px;padding:6px 10px;text-align:center}
+  table.cm td{border:1px solid var(--line2);padding:14px 20px;text-align:center;
+              font-size:20px;font-weight:700;min-width:92px}
+  td.tp,td.tn{background:var(--ok-soft);color:var(--ok)}
+  td.fp{background:var(--warn-soft);color:var(--warn)}
+  td.fn{background:var(--err-soft);color:var(--err)}
+  td .lbl{display:block;font-size:10.5px;font-weight:600;color:var(--ink3);margin-top:3px}
+  .metrics{display:flex;flex-direction:column;gap:10px}
+  .metric{display:flex;align-items:baseline;gap:10px}
+  .metric .v{font-size:26px;font-weight:700;min-width:74px}
+  .metric .n{font-size:13px;font-weight:600}
+  .metric .d{font-size:12px;color:var(--ink3)}
+  .thr{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+  .thr input[type=range]{width:100%;max-width:420px}
+  .note{background:var(--brand-soft);border:1px solid #b8ecf5;border-radius:10px;
+        padding:11px 14px;font-size:12.5px;color:var(--brand2);margin-top:14px}
+  table.fails{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.fails th{text-align:right;color:var(--ink2);font-size:12px;font-weight:600;
+                 border-bottom:1.5px solid var(--line);padding:8px}
+  table.fails td{border-bottom:1px solid var(--line);padding:8px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+  .pill.miss{background:var(--err-soft);color:var(--err);border:1px solid #fecaca}
+  .pill.false{background:var(--warn-soft);color:var(--warn);border:1px solid #fde68a}
+  .bar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;width:70px;display:inline-block}
+  .bar i{display:block;height:100%;background:var(--brand)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>כלי הערכת מודל</h1>
+  <p class="lede">בוחן מודל שאומן ב-Teachable Machine מול ערכת המבחן, ומפיק מטריצת בלבול,
+     מדדי ביצוע ורשימת הטעויות. הכול רץ בדפדפן — התמונות לא נשלחות לשום מקום.</p>
+
+  <div class="card">
+    <h2>הרצה</h2>
+
+    <div class="step">
+      <span class="num" id="n1">1</span>
+      <div style="flex:1">
+        <label class="pick">תיקיית המודל שיוצא מ-Teachable Machine</label>
+        <input type="file" id="modelFiles" webkitdirectory directory multiple>
+        <div class="hint">ב-Teachable Machine: Export Model ← לשונית <b>Tensorflow.js</b> ←
+          Download my model. חלצו את ה-zip ובחרו כאן את התיקייה שנוצרה
+          (מכילה model.json, weights.bin, metadata.json).</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="num" id="n2">2</span>
+      <div style="flex:1">
+        <label class="pick">תיקיית ערכת המבחן</label>
+        <input type="file" id="benchFiles" webkitdirectory directory multiple>
+        <div class="hint">בחרו את התיקייה <b>benchmark</b> של האיבר שלכם. התוויות האמיתיות
+          נלקחות משמות תתי-התיקיות <b>abnormal</b> ו-<b>normal</b> — אין צורך לתייג כלום.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="num" id="n3">3</span>
+      <div style="flex:1">
+        <button id="runBtn" disabled>הרצת ההערכה</button>
+        <div class="status" id="status"></div>
+        <div id="errBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="results">
+    <div class="card">
+      <h2>תוצאות</h2>
+      <div class="grid">
+        <div>
+          <table class="cm">
+            <tr><th></th><th colspan="2">ניבוי המודל</th></tr>
+            <tr><th></th><th>חריג</th><th>תקין</th></tr>
+            <tr>
+              <th>חריג</th>
+              <td class="tp" id="cTP">0<span class="lbl">זוהה נכון</span></td>
+              <td class="fn" id="cFN">0<span class="lbl">שבר שהוחמץ</span></td>
+            </tr>
+            <tr>
+              <th>תקין</th>
+              <td class="fp" id="cFP">0<span class="lbl">אזעקת שווא</span></td>
+              <td class="tn" id="cTN">0<span class="lbl">זוהה נכון</span></td>
+            </tr>
+          </table>
+          <div style="font-size:11.5px;color:var(--ink3);margin-top:8px">
+            השורות = האמת · העמודות = מה שהמודל ניבא
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="metric"><span class="v" id="mAcc">—</span>
+            <span><span class="n">דיוק כולל</span><br><span class="d">אחוז התשובות הנכונות</span></span></div>
+          <div class="metric"><span class="v" id="mSens">—</span>
+            <span><span class="n">רגישות</span><br><span class="d">מתוך החריגים — כמה נתפסו</span></span></div>
+          <div class="metric"><span class="v" id="mSpec">—</span>
+            <span><span class="n">ספציפיות</span><br><span class="d">מתוך התקינים — כמה לא הובהלו</span></span></div>
+          <div class="metric"><span class="v" id="mPrec">—</span>
+            <span><span class="n">דיוק חיובי</span><br><span class="d">כשאמר "חריג" — כמה פעמים צדק</span></span></div>
+        </div>
+      </div>
+
+      <div class="thr">
+        <label class="pick">סף החלטה: <b id="thrVal">0.50</b></label>
+        <input type="range" id="thr" min="0.05" max="0.95" step="0.01" value="0.5">
+        <div class="hint">המודל מחזיר הסתברות, לא הכרעה. הזזת הסף משנה את האיזון בין
+          רגישות לספציפיות — <b>על אותו מודל בדיוק</b>, בלי לאמן מחדש.</div>
+        <div class="note" id="tradeoff"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>טעויות — מהבטוחה ביותר לפחותה</h2>
+      <p class="hint" style="margin-top:0">הטעויות שהמודל היה בטוח בהן הן המלמדות ביותר.
+        פתחו את הראשונות ושאלו: מה משותף להן?</p>
+      <table class="fails"><thead><tr>
+        <th>תמונה</th><th>סוג</th><th>אמת</th><th>ניבוי</th><th>ביטחון</th>
+      </tr></thead><tbody id="failBody"></tbody></table>
+      <button id="csvBtn" style="margin-top:16px">ייצוא כל התוצאות ל-CSV</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let modelFileMap = null, benchList = [], predictions = [], classNames = [];
+
+function setStatus(t){ $('status').textContent = t; }
+function showError(t){ $('errBox').innerHTML = '<div class="err">' + t + '</div>'; }
+function clearError(){ $('errBox').innerHTML = ''; }
+
+// ---- בחירת תיקיית המודל -------------------------------------------------
+$('modelFiles').addEventListener('change', e => {
+  clearError();
+  const files = [...e.target.files];
+  const map = {};
+  for (const f of files) map[f.name.toLowerCase()] = f;
+  if (!map['model.json'] || !map['metadata.json']) {
+    modelFileMap = null;
+    showError('לא נמצאו model.json ו-metadata.json בתיקייה שנבחרה. ' +
+              'ודאו שייצאתם בלשונית Tensorflow.js (ולא Keras) ושחילצתם את ה-zip.');
+  } else {
+    modelFileMap = map;
+    $('n1').classList.add('done');
+    setStatus('המודל נטען: ' + files.length + ' קבצים.');
+  }
+  maybeEnable();
+});
+
+// ---- בחירת ערכת המבחן ---------------------------------------------------
+$('benchFiles').addEventListener('change', e => {
+  clearError();
+  benchList = [];
+  for (const f of e.target.files) {
+    if (!/\.(png|jpe?g)$/i.test(f.name)) continue;
+    const parts = f.webkitRelativePath.split('/');
+    // התווית האמיתית = שם תיקיית האב
+    const parent = (parts[parts.length - 2] || '').toLowerCase();
+    let truth = null;
+    if (parent.includes('abnormal') || parent.includes('positive')) truth = 'abnormal';
+    else if (parent.includes('normal') || parent.includes('negative')) truth = 'normal';
+    if (truth) benchList.push({ file: f, truth, name: f.name });
+  }
+  const nAb = benchList.filter(b => b.truth === 'abnormal').length;
+  const nNo = benchList.length - nAb;
+  if (!benchList.length) {
+    showError('לא נמצאו תמונות בתתי-תיקיות בשם abnormal / normal. ' +
+              'בחרו את תיקיית benchmark עצמה, לא תיקייה שמעליה או מתחתיה.');
+  } else {
+    $('n2').classList.add('done');
+    setStatus(`ערכת מבחן: ${benchList.length} תמונות (${nAb} חריג, ${nNo} תקין).`);
+  }
+  maybeEnable();
+});
+
+function maybeEnable(){ $('runBtn').disabled = !(modelFileMap && benchList.length); }
+
+// ---- הרצה ---------------------------------------------------------------
+$('runBtn').addEventListener('click', async () => {
+  clearError();
+  $('runBtn').disabled = true;
+  try {
+    setStatus('טוען את המודל...');
+    const weightFiles = Object.values(modelFileMap)
+      .filter(f => /\.bin$/i.test(f.name));
+    const model = await tmImage.loadFromFiles(
+      modelFileMap['model.json'], ...weightFiles, modelFileMap['metadata.json']);
+    classNames = model.getClassLabels();
+
+    // מזהים איזה קלאס מייצג "חריג" - לפי שם הקלאס שהתלמיד נתן
+    let abnIdx = classNames.findIndex(c =>
+      /abnormal|positive|חריג|חיובי|שבור|שבר/i.test(c));
+    if (abnIdx === -1) abnIdx = 1;   // ברירת מחדל: הקלאס השני
+    setStatus(`המודל נטען. קלאסים: ${classNames.join(' · ')} — ` +
+              `"${classNames[abnIdx]}" מטופל כחריג.`);
+
+    predictions = [];
+    for (let i = 0; i < benchList.length; i++) {
+      const item = benchList[i];
+      const img = await fileToImage(item.file);
+      const p = await model.predict(img);
+      predictions.push({ name: item.name, truth: item.truth, score: p[abnIdx].probability });
+      if (i % 5 === 0) setStatus(`מריץ... ${i + 1}/${benchList.length}`);
+    }
+    setStatus(`הושלם: ${predictions.length} תמונות נבדקו.`);
+    $('results').style.display = 'block';
+    $('n3').classList.add('done');
+    render();
+  } catch (err) {
+    showError('שגיאה: ' + err.message);
+    setStatus('');
+  } finally {
+    $('runBtn').disabled = false;
+  }
+});
+
+function fileToImage(file){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('לא ניתן לקרוא את ' + file.name));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// ---- חישוב והצגה --------------------------------------------------------
+$('thr').addEventListener('input', render);
+
+function render(){
+  const t = parseFloat($('thr').value);
+  $('thrVal').textContent = t.toFixed(2);
+
+  let TP=0, FN=0, FP=0, TN=0;
+  const fails = [];
+  for (const p of predictions) {
+    const pred = p.score >= t ? 'abnormal' : 'normal';
+    if (p.truth === 'abnormal' && pred === 'abnormal') TP++;
+    else if (p.truth === 'abnormal') { FN++; fails.push({...p, pred, kind:'miss'}); }
+    else if (pred === 'abnormal') { FP++; fails.push({...p, pred, kind:'false'}); }
+    else TN++;
+  }
+  $('cTP').firstChild.textContent = TP;
+  $('cFN').firstChild.textContent = FN;
+  $('cFP').firstChild.textContent = FP;
+  $('cTN').firstChild.textContent = TN;
+
+  const pct = (a,b) => b ? Math.round(100*a/b) + '%' : '—';
+  $('mAcc').textContent  = pct(TP+TN, TP+TN+FP+FN);
+  $('mSens').textContent = pct(TP, TP+FN);
+  $('mSpec').textContent = pct(TN, TN+FP);
+  $('mPrec').textContent = pct(TP, TP+FP);
+
+  $('tradeoff').innerHTML = FN > FP
+    ? `בסף הנוכחי המודל <b>מחמיץ ${FN} מקרים חריגים</b> ומקים ${FP} אזעקות שווא. ` +
+      `בהקשר רפואי, החמצה היא בדרך כלל החמורה מבין השתיים — נסו להוריד את הסף ולראות מה קורה.`
+    : `בסף הנוכחי המודל מקים <b>${FP} אזעקות שווא</b> ומחמיץ ${FN} מקרים חריגים. ` +
+      `העלאת הסף תפחית אזעקות שווא, אך תגדיל את מספר ההחמצות.`;
+
+  // הטעויות הבטוחות ביותר קודם
+  fails.sort((a,b) => Math.abs(b.score-0.5) - Math.abs(a.score-0.5));
+  $('failBody').innerHTML = fails.length ? fails.map(f => {
+    const conf = Math.round(100 * (f.pred === 'abnormal' ? f.score : 1-f.score));
+    return `<tr>
+      <td style="font-family:monospace;font-size:11.5px">${f.name}</td>
+      <td><span class="pill ${f.kind}">${f.kind==='miss'?'החמצה':'אזעקת שווא'}</span></td>
+      <td>${f.truth==='abnormal'?'חריג':'תקין'}</td>
+      <td>${f.pred==='abnormal'?'חריג':'תקין'}</td>
+      <td><span class="bar"><i style="width:${conf}%"></i></span> ${conf}%</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" style="color:var(--ok);padding:14px">אין טעויות בסף זה.</td></tr>';
+}
+
+// ---- ייצוא --------------------------------------------------------------
+$('csvBtn').addEventListener('click', () => {
+  const t = parseFloat($('thr').value);
+  const rows = [['image','true_label','predicted_label','abnormal_score','threshold','correct']];
+  for (const p of predictions) {
+    const pred = p.score >= t ? 'abnormal' : 'normal';
+    rows.push([p.name, p.truth, pred, p.score.toFixed(4), t.toFixed(2), pred===p.truth ? '1':'0']);
+  }
+  const csv = '﻿' + rows.map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'evaluation_results.csv';
+  a.click();
+});
+</script>
+</body>
+</html>
