@@ -68,6 +68,23 @@
   .pill.false{background:var(--warn-soft);color:var(--warn);border:1px solid #fde68a}
   .bar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;width:70px;display:inline-block}
   .bar i{display:block;height:100%;background:var(--brand)}
+  table.fails tbody tr{cursor:pointer}
+  table.fails tbody tr:hover{background:var(--brand-soft)}
+
+  /* ---- מפת קשב ---- */
+  #heat{display:none}
+  .heat-pair{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+  .heat-fig{position:relative;width:300px;height:300px;flex-shrink:0;
+            border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#000}
+  .heat-fig canvas,.heat-fig img{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .heat-cap{font-size:12px;color:var(--ink2);margin-top:6px;text-align:center}
+  .heat-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0}
+  .heat-ctl button{padding:7px 14px;font-size:13px;background:var(--surface);
+                   color:var(--ink);border:1px solid var(--line2)}
+  .heat-ctl button.on{background:var(--brand2);color:#fff;border-color:var(--brand2)}
+  .legend{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)}
+  .legend .grad{width:120px;height:10px;border-radius:5px;
+       background:linear-gradient(90deg,#2563eb,#e5eef5,#dc2626)}
 </style>
 </head>
 <body>
@@ -168,6 +185,42 @@
       </tr></thead><tbody id="failBody"></tbody></table>
       <button id="csvBtn" style="margin-top:16px">ייצוא כל התוצאות ל-CSV</button>
     </div>
+
+    <div class="card" id="heat">
+      <h2>מפת קשב — איפה המודל הסתכל</h2>
+      <p class="hint" style="margin-top:0">
+        הכלי מכסה אזור אחר בכל פעם בריבוע אפור ושואל את המודל מחדש.
+        אזור שכיסויו שינה את התשובה — הוא זה שהשפיע.
+        <b>שימו לב:</b> המפה מראה מה השפיע על ההחלטה, לא היכן הממצא.
+      </p>
+
+      <div class="heat-ctl">
+        <span style="font-size:13px;color:var(--ink2)">גודל ריבוע:</span>
+        <button class="patch on" data-p="48">48px · מהיר</button>
+        <button class="patch" data-p="32">32px</button>
+        <button class="patch" data-p="16">16px · מדויק</button>
+        <span class="legend" style="margin-inline-start:auto">
+          <span>מוריד ביטחון בחריג</span><span class="grad"></span><span>מעלה</span>
+        </span>
+      </div>
+
+      <div class="heat-pair">
+        <div>
+          <div class="heat-fig"><img id="heatOrig" alt=""></div>
+          <div class="heat-cap">התמונה המקורית</div>
+        </div>
+        <div>
+          <div class="heat-fig">
+            <img id="heatOrig2" alt="">
+            <canvas id="heatCanvas" style="opacity:.6"></canvas>
+          </div>
+          <div class="heat-cap">מפת הקשב</div>
+        </div>
+        <div style="flex:1;min-width:210px">
+          <div id="heatInfo" style="font-size:13px;line-height:1.9"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -177,6 +230,8 @@
 <script>
 const $ = id => document.getElementById(id);
 let modelFileMap = null, benchList = [], predictions = [], classNames = [];
+// נשמרים אחרי ההרצה כדי שמפת הקשב תוכל להריץ את אותו מודל שוב
+let loadedModel = null, abnormalIdx = 1, heatPatch = 48, heatCurrent = null;
 
 function setStatus(t){ $('status').textContent = t; }
 function showError(t){ $('errBox').innerHTML = '<div class="err">' + t + '</div>'; }
@@ -245,11 +300,13 @@ $('runBtn').addEventListener('click', async () => {
     const model = await tmImage.loadFromFiles(
       modelFileMap['model.json'], ...weightFiles, modelFileMap['metadata.json']);
     classNames = model.getClassLabels();
+    loadedModel = model;             // נשמר עבור מפת הקשב
 
     // מזהים איזה קלאס מייצג "חריג" - לפי שם הקלאס שהתלמיד נתן
     let abnIdx = classNames.findIndex(c =>
       /abnormal|positive|חריג|חיובי|שבור|שבר/i.test(c));
     if (abnIdx === -1) abnIdx = 1;   // ברירת מחדל: הקלאס השני
+    abnormalIdx = abnIdx;
     setStatus(`המודל נטען. קלאסים: ${classNames.join(' · ')} — ` +
               `"${classNames[abnIdx]}" מטופל כחריג.`);
 
@@ -258,7 +315,7 @@ $('runBtn').addEventListener('click', async () => {
       const item = benchList[i];
       const img = await fileToImage(item.file);
       const p = await model.predict(img);
-      predictions.push({ name: item.name, fullPath: item.fullPath,
+      predictions.push({ name: item.name, fullPath: item.fullPath, file: item.file,
                          truth: item.truth, score: p[abnIdx].probability });
       if (i % 5 === 0) setStatus(`מריץ... ${i + 1}/${benchList.length}`);
     }
@@ -292,13 +349,13 @@ function render(){
 
   let TP=0, FN=0, FP=0, TN=0;
   const fails = [];
-  for (const p of predictions) {
+  predictions.forEach((p, idx) => {
     const pred = p.score >= t ? 'abnormal' : 'normal';
     if (p.truth === 'abnormal' && pred === 'abnormal') TP++;
-    else if (p.truth === 'abnormal') { FN++; fails.push({...p, pred, kind:'miss'}); }
-    else if (pred === 'abnormal') { FP++; fails.push({...p, pred, kind:'false'}); }
+    else if (p.truth === 'abnormal') { FN++; fails.push({...p, idx, pred, kind:'miss'}); }
+    else if (pred === 'abnormal') { FP++; fails.push({...p, idx, pred, kind:'false'}); }
     else TN++;
-  }
+  });
   $('cTP').firstChild.textContent = TP;
   $('cFN').firstChild.textContent = FN;
   $('cFP').firstChild.textContent = FP;
@@ -347,7 +404,7 @@ function render(){
   fails.sort((a,b) => Math.abs(b.score-0.5) - Math.abs(a.score-0.5));
   $('failBody').innerHTML = fails.length ? fails.map(f => {
     const conf = Math.round(100 * (f.pred === 'abnormal' ? f.score : 1-f.score));
-    return `<tr>
+    return `<tr data-idx="${f.idx}" title="לחצו כדי לראות איפה המודל הסתכל">
       <td style="font-family:monospace;font-size:11.5px">${f.name}</td>
       <td><span class="pill ${f.kind}">${f.kind==='miss'?'החמצה':'אזעקת שווא'}</span></td>
       <td>${f.truth==='abnormal'?'חריג':'תקין'}</td>
@@ -355,6 +412,106 @@ function render(){
       <td><span class="bar"><i style="width:${conf}%"></i></span> ${conf}%</td>
     </tr>`;
   }).join('') : '<tr><td colspan="5" style="color:var(--ok);padding:14px">אין טעויות בסף זה.</td></tr>';
+}
+
+// ---- מפת קשב (occlusion sensitivity) ------------------------------------
+// שיטה אגנוסטית למודל: מכסים אזור, מריצים שוב, ומודדים כמה התחזית זזה.
+// לא נדרשים גרדיאנטים ולא גישה לשכבות הפנימיות - עובד על כל מודל כקופסה שחורה.
+const HEAT_SIZE = 224;   // גודל הקלט של MobileNet שמאחורי Teachable Machine
+
+document.querySelectorAll('.patch').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.patch').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    heatPatch = +b.dataset.p;
+    if (heatCurrent) buildHeatmap(heatCurrent);
+  });
+});
+
+$('failBody').addEventListener('click', e => {
+  const tr = e.target.closest('tr');
+  if (!tr || !tr.dataset.idx) return;
+  const p = predictions[+tr.dataset.idx];
+  if (p) buildHeatmap(p);
+});
+
+async function buildHeatmap(p) {
+  if (!loadedModel) { showError('המודל אינו טעון. הריצו קודם את ההערכה.'); return; }
+  heatCurrent = p;
+  $('heat').style.display = 'block';
+  $('heat').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  const url = URL.createObjectURL(p.file);
+  $('heatOrig').src = url;
+  $('heatOrig2').src = url;
+  $('heatInfo').innerHTML = '<span style="color:var(--ink3)">מחשב...</span>';
+
+  const img = await fileToImage(p.file);
+  const base = document.createElement('canvas');
+  base.width = base.height = HEAT_SIZE;
+  const bctx = base.getContext('2d');
+  bctx.drawImage(img, 0, 0, HEAT_SIZE, HEAT_SIZE);
+
+  const baseline = (await loadedModel.predict(base))[abnormalIdx].probability;
+
+  const work = document.createElement('canvas');
+  work.width = work.height = HEAT_SIZE;
+  const wctx = work.getContext('2d');
+
+  const step = heatPatch;
+  const cells = Math.ceil(HEAT_SIZE / step);
+  const deltas = [];
+  let maxAbs = 1e-6;
+
+  for (let gy = 0; gy < cells; gy++) {
+    for (let gx = 0; gx < cells; gx++) {
+      wctx.drawImage(base, 0, 0);
+      wctx.fillStyle = '#808080';           // אפור ניטרלי
+      wctx.fillRect(gx * step, gy * step, step, step);
+      const s = (await loadedModel.predict(work))[abnormalIdx].probability;
+      const d = baseline - s;               // חיובי = האזור תמך ב"חריג"
+      deltas.push(d);
+      maxAbs = Math.max(maxAbs, Math.abs(d));
+    }
+    $('heatInfo').innerHTML =
+      `<span style="color:var(--ink3)">מחשב... ${Math.round(100*(gy+1)/cells)}%</span>`;
+  }
+
+  // ציור: רשת קטנה שנמתחת בהחלקה על התמונה
+  const hm = $('heatCanvas');
+  hm.width = hm.height = cells;
+  const hctx = hm.getContext('2d');
+  const im = hctx.createImageData(cells, cells);
+  deltas.forEach((d, i) => {
+    const n = d / maxAbs;                   // בין -1 ל-1
+    const o = i * 4;
+    im.data[o]     = n > 0 ? 220 : 229 - Math.round(-n * 190);   // אדום
+    im.data[o + 1] = 229 - Math.round(Math.abs(n) * 190);        // ירוק
+    im.data[o + 2] = n < 0 ? 235 : 229 - Math.round(n * 190);    // כחול
+    im.data[o + 3] = Math.round(Math.abs(n) * 235);              // שקיפות לפי עוצמה
+  });
+  hctx.putImageData(im, 0, 0);
+  hm.style.width = hm.style.height = '100%';
+  hm.style.imageRendering = 'auto';
+
+  // האזור המשפיע ביותר, בשפה של רבעי תמונה
+  const top = deltas.indexOf(Math.max(...deltas));
+  const tx = top % cells, ty = Math.floor(top / cells);
+  const where = `${ty < cells/3 ? 'עליון' : ty > 2*cells/3 ? 'תחתון' : 'אמצעי'}-` +
+                `${tx < cells/3 ? 'שמאלי' : tx > 2*cells/3 ? 'ימני' : 'מרכזי'}`;
+  const edge = (tx === 0 || ty === 0 || tx === cells-1 || ty === cells-1);
+
+  $('heatInfo').innerHTML = `
+    <b style="font-family:monospace;font-size:11.5px">${p.name}</b><br>
+    אמת: <b>${p.truth === 'abnormal' ? 'חריג' : 'תקין'}</b> ·
+    ציון חריג: <b>${(p.score*100).toFixed(0)}%</b><br>
+    <hr style="border:none;border-top:1px solid var(--line);margin:9px 0">
+    ${deltas.length} אזורים נבדקו (ריבוע ${heatPatch}px)<br>
+    ההשפעה החזקה ביותר: <b>${where}</b><br>
+    שינוי מרבי בתחזית: <b>${(maxAbs*100).toFixed(1)}%</b>
+    ${edge ? `<div class="note" style="margin-top:10px">⚠️ האזור המשפיע ביותר נמצא
+       <b>בשולי התמונה</b>. שם יושבים בדרך כלל סמני צד מתכתיים, טקסט ורקע שחור —
+       ולא אנטומיה. ייתכן שהמודל מצא קיצור דרך. שווה לבדוק מה יש שם.</div>` : ''}`;
 }
 
 // ---- ייצוא --------------------------------------------------------------
