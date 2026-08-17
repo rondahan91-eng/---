@@ -333,10 +333,14 @@ $('runBtn').addEventListener('click', async () => {
     classNames = model.getClassLabels();
     loadedModel = model;             // נשמר עבור מפת הקשב
 
-    // מזהים איזה קלאס מייצג "חריג" - לפי שם הקלאס שהתלמיד נתן
-    let abnIdx = classNames.findIndex(c =>
-      /abnormal|positive|חריג|חיובי|שבור|שבר/i.test(c));
-    if (abnIdx === -1) abnIdx = 1;   // ברירת מחדל: הקלאס השני
+    // מזהים איזה פלט של המודל מייצג "חריג" - באותו אוצר מילים שמזהה את
+    // תוויות התיקיות. קודם היו כאן שתי רשימות נפרדות, ומחלקה שהופיעה רק
+    // באחת מהן (כמו Parasitized) גרמה להיפוך מלא של התוצאות.
+    let abnIdx = classNames.findIndex(c => labelFromFolder(c) === 'abnormal');
+    if (abnIdx === -1) {
+      const normIdx = classNames.findIndex(c => labelFromFolder(c) === 'normal');
+      abnIdx = normIdx === -1 ? 1 : (normIdx === 0 ? 1 : 0);
+    }
     abnormalIdx = abnIdx;
     setStatus(`המודל נטען. קלאסים: ${classNames.join(' · ')} — ` +
               `"${classNames[abnIdx]}" מטופל כחריג.`);
@@ -413,6 +417,17 @@ function render(){
       וה"דיוק הכולל" זהה ל${valid} ולכן אינו מוסיף מידע.<br>
       למדידה מלאה צריך את שתי המחלקות — תיקיית <code>benchmark</code>
       שנבנתה אוטומטית מכילה 50 מכל סוג.`;
+  } else if (nAb && nNo && (TP + TN) / (nAb + nNo) < 0.4) {
+    // דיוק הרבה מתחת למקרה על ערכה מאוזנת אינו "מודל גרוע" - מודל אקראי
+    // היה מגיע ל-50%. כמעט תמיד המשמעות היא שהמחלקות התהפכו.
+    const flipped = Math.round(100 * (FN + FP) / (nAb + nNo));
+    warn.style.display = 'block';
+    warn.innerHTML = `<b>הדיוק נמוך בהרבה ממקרה — כנראה המחלקות התהפכו.</b><br>
+      מודל אקראי היה מגיע לכ-50%. היפוך התשובות כאן היה נותן <b>${flipped}%</b>.<br>
+      הכלי מפרש את הפלט <b>"${classNames[abnormalIdx] || '?'}"</b> כמחלקה החריגה.
+      אם זו למעשה המחלקה התקינה — שנו את שמות הקלאסים ב-Teachable Machine
+      לשמות שמרמזים על המחלקה (למשל <code>Parasitized</code> ו-<code>Uninfected</code>)
+      וייצאו מחדש.`;
   } else {
     warn.style.display = 'none';
   }
@@ -525,8 +540,13 @@ async function buildHeatmap(p) {
   hm.style.width = hm.style.height = '100%';
   hm.style.imageRendering = 'auto';
 
-  // האזור המשפיע ביותר, בשפה של רבעי תמונה
-  const top = deltas.indexOf(Math.max(...deltas));
+  // האזור המשפיע ביותר - לפי ערך מוחלט ולא חתום. במפה כחולה כל הדלתאות
+  // שליליות, ו-Math.max היה מחזיר את הפחות-שלילית: האזור הכי *פחות* משפיע,
+  // בדרך כלל פינה ריקה. כך הדיווח על המיקום תאם אזור אחר מזה שעוצמתו הוצגה.
+  let top = 0;
+  for (let i = 1; i < deltas.length; i++) {
+    if (Math.abs(deltas[i]) > Math.abs(deltas[top])) top = i;
+  }
   const tx = top % cells, ty = Math.floor(top / cells);
   const where = `${ty < cells/3 ? 'עליון' : ty > 2*cells/3 ? 'תחתון' : 'אמצעי'}-` +
                 `${tx < cells/3 ? 'שמאלי' : tx > 2*cells/3 ? 'ימני' : 'מרכזי'}`;
