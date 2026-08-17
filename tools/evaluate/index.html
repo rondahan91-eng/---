@@ -256,17 +256,34 @@ $('modelFiles').addEventListener('change', e => {
 });
 
 // ---- בחירת ערכת המבחן ---------------------------------------------------
+// זיהוי התווית משם התיקייה. הסדר קריטי: 'abnormal' מכיל 'normal' ו-'uninfected'
+// מכיל 'infected', ולכן המונחים הספציפיים נבדקים ראשונים.
+const LABEL_RULES = [
+  [/uninfected|unaffected/, 'normal'],
+  [/abnormal/,              'abnormal'],
+  [/^normal|[^b]normal/,    'normal'],
+  [/pneumonia|parasitized|positive|tumou?r|malignant|diseased|sick|fracture|חריג|חיובי/, 'abnormal'],
+  [/negative|healthy|benign|תקין|שלילי/, 'normal'],
+];
+
+function labelFromFolder(name) {
+  const n = name.toLowerCase();
+  for (const [re, label] of LABEL_RULES) if (re.test(n)) return label;
+  return null;
+}
+
 $('benchFiles').addEventListener('change', e => {
   clearError();
   benchList = [];
+  const folderMap = {}, skipped = {};
   for (const f of e.target.files) {
     if (!/\.(png|jpe?g)$/i.test(f.name)) continue;
     const parts = f.webkitRelativePath.split('/');
     // התווית האמיתית = שם תיקיית האב
-    const parent = (parts[parts.length - 2] || '').toLowerCase();
-    let truth = null;
-    if (parent.includes('abnormal') || parent.includes('positive')) truth = 'abnormal';
-    else if (parent.includes('normal') || parent.includes('negative')) truth = 'normal';
+    const parent = (parts[parts.length - 2] || '');
+    const truth = labelFromFolder(parent);
+    if (truth) folderMap[parent] = truth;
+    else skipped[parent] = (skipped[parent] || 0) + 1;
     // חשוב: הנתיב היחסי ולא רק שם הקובץ. ב-MURA כל מחקר מכיל image1.png,
     // image2.png - שמות שחוזרים על עצמם בין מטופלים. בלי הנתיב אי אפשר לדעת
     // באיזו תמונה מדובר, וניתוח השגיאות הופך לבלתי אפשרי.
@@ -277,12 +294,26 @@ $('benchFiles').addEventListener('change', e => {
   }
   const nAb = benchList.filter(b => b.truth === 'abnormal').length;
   const nNo = benchList.length - nAb;
+  const nSkipped = Object.values(skipped).reduce((a, b) => a + b, 0);
+
   if (!benchList.length) {
-    showError('לא נמצאו תמונות בתתי-תיקיות בשם abnormal / normal. ' +
-              'בחרו את תיקיית benchmark עצמה, לא תיקייה שמעליה או מתחתיה.');
+    showError('לא זוהתה אף תווית משמות התיקיות.<br>' +
+      (nSkipped ? 'תיקיות שלא זוהו: <b>' + Object.keys(skipped).join(', ') + '</b><br>' : '') +
+      'שם תת-התיקייה צריך לרמז על המחלקה (למשל abnormal/normal, PNEUMONIA/NORMAL). ' +
+      'בחרו את תיקיית ערכת המבחן עצמה, לא תיקייה שמעליה או מתחתיה.');
   } else {
     $('n2').classList.add('done');
-    setStatus(`ערכת מבחן: ${benchList.length} תמונות (${nAb} חריג, ${nNo} תקין).`);
+    const mapping = Object.entries(folderMap)
+      .map(([f, l]) => `${f} → ${l === 'abnormal' ? 'חריג' : 'תקין'}`).join(' · ');
+    setStatus(`ערכת מבחן: ${benchList.length} תמונות (${nAb} חריג, ${nNo} תקין).  ${mapping}`);
+
+    // אזהרה קולנית: קודם קבצים לא מזוהים פשוט נזרקו בשקט, וההערכה רצה על
+    // חצי מהערכה בלי שאיש ידע.
+    if (nSkipped) {
+      showError(`⚠️ <b>${nSkipped} תמונות לא נכללו</b> — שם התיקייה שלהן לא זוהה כמחלקה: ` +
+        Object.entries(skipped).map(([f, n]) => `<b>${f}</b> (${n})`).join(', ') +
+        '<br>התוצאות למטה מחושבות בלי התמונות האלה. תקנו את שמות התיקיות ובחרו שוב.');
+    }
   }
   maybeEnable();
 });
