@@ -85,6 +85,20 @@
   .legend{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)}
   .legend .grad{width:120px;height:10px;border-radius:5px;
        background:linear-gradient(90deg,#2563eb,#e5eef5,#dc2626)}
+
+  /* ---- גרפים וייצוא ---- */
+  .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px}
+  figure.chart{margin:0;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface)}
+  figure.chart canvas{width:100%;height:auto;display:block}
+  figure.chart figcaption{font-size:12px;color:var(--ink2);margin-top:8px;line-height:1.6}
+  figure.chart .dl{margin-top:8px;padding:5px 12px;font-size:12px;
+       background:var(--surface);color:var(--ink2);border:1px solid var(--line2)}
+  figure.chart .dl:hover{background:var(--surface2);color:var(--brand2);border-color:var(--brand)}
+  .runbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+       margin-bottom:16px;padding:12px 14px;background:var(--surface2);
+       border:1px solid var(--line);border-radius:12px}
+  .runbar input{max-width:190px}
+  .runbar .count{font-size:12.5px;color:var(--ink2);margin-inline-start:auto}
 </style>
 </head>
 <body>
@@ -184,6 +198,53 @@
         <th>תמונה</th><th>סוג</th><th>אמת</th><th>ניבוי</th><th>ביטחון</th>
       </tr></thead><tbody id="failBody"></tbody></table>
       <button id="csvBtn" style="margin-top:16px">ייצוא כל התוצאות ל-CSV</button>
+    </div>
+
+    <div class="card" id="charts">
+      <h2>גרפים וייצוא</h2>
+
+      <div class="runbar">
+        <span style="font-size:13px;color:var(--ink2)">שמירת ההרצה הנוכחית:</span>
+        <input type="text" id="runLabel" placeholder="תווית — למשל n=50">
+        <button id="saveRun">שמירה</button>
+        <button id="clearRuns" class="secondary">איפוס הרצות</button>
+        <span class="count" id="runCount"></span>
+      </div>
+
+      <div class="chart-grid">
+        <figure class="chart">
+          <canvas id="chHist" width="660" height="380"></canvas>
+          <figcaption><b>התפלגות הציונים.</b> ככל ששתי הערימות נפרדות זו מזו,
+            כך המודל מבחין טוב יותר. חפיפה ביניהן היא מקור הטעויות.</figcaption>
+          <button class="dl" data-dl="chHist" data-name="score_distribution">הורדת התרשים</button>
+        </figure>
+
+        <figure class="chart">
+          <canvas id="chThr" width="660" height="380"></canvas>
+          <figcaption><b>השפעת הסף.</b> שני הקווים נעים בכיוונים מנוגדים —
+            זו הפשרה שאי אפשר לברוח ממנה. נקודת החיתוך אינה בהכרח הבחירה הנכונה.</figcaption>
+          <button class="dl" data-dl="chThr" data-name="threshold_tradeoff">הורדת התרשים</button>
+        </figure>
+
+        <figure class="chart">
+          <canvas id="chPie" width="660" height="380"></canvas>
+          <figcaption><b>הרכב הטעויות.</b> מבין הטעויות שנעשו — כמה היו החמצות
+            וכמה אזעקות שווא. בהקשר רפואי לשתיהן משמעות שונה לגמרי.</figcaption>
+          <button class="dl" data-dl="chPie" data-name="error_breakdown">הורדת התרשים</button>
+        </figure>
+
+        <figure class="chart">
+          <canvas id="chCurve" width="660" height="380"></canvas>
+          <figcaption><b>השוואת הרצות.</b> נבנה מההרצות ששמרתם. כאן נראית
+            עקומת הלמידה — והאם היא ממשיכה לעלות או הגיעה לרוויה.</figcaption>
+          <button class="dl" data-dl="chCurve" data-name="runs_comparison">הורדת התרשים</button>
+        </figure>
+      </div>
+
+      <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap">
+        <button id="csvBtn2">ייצוא תוצאות ל-CSV</button>
+        <button id="runsCsvBtn" class="secondary">ייצוא טבלת ההרצות ל-CSV</button>
+      </div>
     </div>
 
     <div class="card" id="heat">
@@ -447,6 +508,9 @@ function render(){
       `העלאת הסף תפחית אזעקות שווא, אך תגדיל את מספר ההחמצות.`;
 
   // הטעויות הבטוחות ביותר קודם
+  // הגרפים תלויים בסף, ולכן מתרעננים יחד עם המדדים
+  try { redrawCharts(); } catch (e) { /* טרם נטענו */ }
+
   fails.sort((a,b) => Math.abs(b.score-0.5) - Math.abs(a.score-0.5));
   $('failBody').innerHTML = fails.length ? fails.map(f => {
     const conf = Math.round(100 * (f.pred === 'abnormal' ? f.score : 1-f.score));
@@ -565,7 +629,250 @@ async function buildHeatmap(p) {
        ולא אנטומיה. ייתכן שהמודל מצא קיצור דרך. שווה לבדוק מה יש שם.</div>` : ''}`;
 }
 
+// ---- גרפים ---------------------------------------------------------------
+// מצוירים על canvas ולא בספריית תרשימים: הכלי נשאר קובץ יחיד שעובד גם בלי
+// רשת, וכל תרשים ניתן להורדה כתמונה בשורה אחת (toDataURL).
+const CH = { ink:'#0d1f2b', ink2:'#4a6478', ink3:'#8aa2b3', line:'#e0e9f0',
+             ab:'#dc2626', no:'#2563eb', brand:'#0891b2', ok:'#059669', warn:'#b45309' };
+
+function frame(cv, title, xlab, ylab) {
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const m = { l: 62, r: 18, t: 44, b: 52 };
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = '#fff'; c.fillRect(0, 0, W, H);
+  c.fillStyle = CH.ink; c.font = 'bold 15px Segoe UI, Arial'; c.textAlign = 'right';
+  c.direction = 'rtl'; c.fillText(title, W - m.r, 26);
+  c.strokeStyle = CH.line; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(m.l, m.t); c.lineTo(m.l, H - m.b); c.lineTo(W - m.r, H - m.b); c.stroke();
+  c.fillStyle = CH.ink3; c.font = '12px Segoe UI, Arial';
+  c.textAlign = 'center'; c.fillText(xlab, (m.l + W - m.r) / 2, H - 14);
+  c.save(); c.translate(16, (m.t + H - m.b) / 2); c.rotate(-Math.PI / 2);
+  c.fillText(ylab, 0, 0); c.restore();
+  return { c, W, H, m, px: (f) => m.l + f * (W - m.r - m.l), py: (f) => (H - m.b) - f * (H - m.b - m.t) };
+}
+
+function yTicks(g, max, fmt) {
+  const { c, m, W, py } = g;
+  c.font = '11px Segoe UI, Arial'; c.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = i / 4, y = py(v);
+    c.strokeStyle = CH.line; c.beginPath(); c.moveTo(m.l, y); c.lineTo(W - m.r, y); c.stroke();
+    c.fillStyle = CH.ink3; c.fillText(fmt(v * max), m.l - 8, y + 4);
+  }
+}
+
+function drawHist() {
+  const g = frame($('chHist'), 'התפלגות הציונים לפי המחלקה האמיתית', 'ציון "חריג" שנתן המודל', 'מספר תמונות');
+  const bins = 20, ab = new Array(bins).fill(0), no = new Array(bins).fill(0);
+  for (const p of predictions) {
+    const i = Math.min(bins - 1, Math.floor(p.score * bins));
+    (p.truth === 'abnormal' ? ab : no)[i]++;
+  }
+  const max = Math.max(1, ...ab, ...no);
+  yTicks(g, max, v => Math.round(v));
+  const { c, py, px } = g, bw = (px(1) - px(0)) / bins;
+  for (let i = 0; i < bins; i++) {
+    const x = px(i / bins);
+    c.fillStyle = CH.no + 'cc';
+    c.fillRect(x, py(no[i] / max), bw - 1, py(0) - py(no[i] / max));
+    c.fillStyle = CH.ab + 'aa';
+    c.fillRect(x, py(ab[i] / max), bw - 1, py(0) - py(ab[i] / max));
+  }
+  c.font = '11px Segoe UI, Arial'; c.textAlign = 'center'; c.fillStyle = CH.ink3;
+  [0, .25, .5, .75, 1].forEach(v => c.fillText(v.toFixed(2), px(v), py(0) + 18));
+  // מקרא
+  c.textAlign = 'right'; c.font = '12px Segoe UI, Arial';
+  c.fillStyle = CH.ab; c.fillRect(g.W - 150, 36, 11, 11);
+  c.fillStyle = CH.ink2; c.fillText('חריג', g.W - 156, 46);
+  c.fillStyle = CH.no; c.fillRect(g.W - 78, 36, 11, 11);
+  c.fillStyle = CH.ink2; c.fillText('תקין', g.W - 84, 46);
+}
+
+function drawThreshold() {
+  const g = frame($('chThr'), 'רגישות מול ספציפיות, לפי הסף', 'סף החלטה', 'אחוז');
+  yTicks(g, 100, v => Math.round(v) + '%');
+  const ab = predictions.filter(p => p.truth === 'abnormal').map(p => p.score);
+  const no = predictions.filter(p => p.truth === 'normal').map(p => p.score);
+  const { c, px, py } = g;
+  const line = (fn, col) => {
+    c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath();
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100, v = fn(t);
+      i ? c.lineTo(px(t), py(v)) : c.moveTo(px(t), py(v));
+    }
+    c.stroke();
+  };
+  if (ab.length) line(t => ab.filter(s => s >= t).length / ab.length, CH.ab);
+  if (no.length) line(t => no.filter(s => s < t).length / no.length, CH.no);
+  const cur = parseFloat($('thr').value);
+  c.strokeStyle = CH.ink3; c.setLineDash([4, 4]); c.lineWidth = 1;
+  c.beginPath(); c.moveTo(px(cur), py(0)); c.lineTo(px(cur), py(1)); c.stroke(); c.setLineDash([]);
+  c.font = '11px Segoe UI, Arial'; c.textAlign = 'center'; c.fillStyle = CH.ink3;
+  [0, .25, .5, .75, 1].forEach(v => c.fillText(v.toFixed(2), px(v), py(0) + 18));
+  c.fillStyle = CH.ink2; c.font = '11.5px Segoe UI, Arial';
+  c.fillText('הסף הנוכחי', px(cur), py(1) - 6);
+  c.textAlign = 'right'; c.font = '12px Segoe UI, Arial';
+  c.fillStyle = CH.ab; c.fillRect(g.W - 178, 36, 11, 11);
+  c.fillStyle = CH.ink2; c.fillText('רגישות', g.W - 184, 46);
+  c.fillStyle = CH.no; c.fillRect(g.W - 90, 36, 11, 11);
+  c.fillStyle = CH.ink2; c.fillText('ספציפיות', g.W - 96, 46);
+}
+
+function drawPie() {
+  const cv = $('chPie'), c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  c.clearRect(0, 0, W, H); c.fillStyle = '#fff'; c.fillRect(0, 0, W, H);
+  c.fillStyle = CH.ink; c.font = 'bold 15px Segoe UI, Arial';
+  c.textAlign = 'right'; c.direction = 'rtl';
+  c.fillText('הרכב הטעויות', W - 18, 26);
+
+  const t = parseFloat($('thr').value);
+  let FN = 0, FP = 0;
+  for (const p of predictions) {
+    const pred = p.score >= t ? 'abnormal' : 'normal';
+    if (p.truth === 'abnormal' && pred === 'normal') FN++;
+    else if (p.truth === 'normal' && pred === 'abnormal') FP++;
+  }
+  const total = FN + FP;
+  const cx = W / 2, cy = H / 2 + 12, r = Math.min(W, H) / 3.4;
+  if (!total) {
+    c.fillStyle = CH.ok; c.font = '15px Segoe UI, Arial'; c.textAlign = 'center';
+    c.fillText('אין טעויות בסף זה', cx, cy); return;
+  }
+  let a0 = -Math.PI / 2;
+  [['החמצות', FN, CH.ab], ['אזעקות שווא', FP, CH.warn]].forEach(([lab, n, col]) => {
+    if (!n) return;
+    const a1 = a0 + 2 * Math.PI * n / total;
+    c.fillStyle = col; c.beginPath(); c.moveTo(cx, cy);
+    c.arc(cx, cy, r, a0, a1); c.closePath(); c.fill();
+    const mid = (a0 + a1) / 2;
+    c.fillStyle = '#fff'; c.font = 'bold 15px Segoe UI, Arial'; c.textAlign = 'center';
+    if (n / total > 0.08) c.fillText(`${Math.round(100*n/total)}%`, cx + Math.cos(mid)*r*0.6, cy + Math.sin(mid)*r*0.6 + 5);
+    a0 = a1;
+  });
+  c.textAlign = 'right'; c.font = '12.5px Segoe UI, Arial';
+  c.fillStyle = CH.ab; c.fillRect(W - 190, 40, 11, 11);
+  c.fillStyle = CH.ink2; c.fillText(`החמצות (${FN})`, W - 196, 50);
+  c.fillStyle = CH.warn; c.fillRect(W - 190, 60, 11, 11);
+  c.fillStyle = CH.ink2; c.fillText(`אזעקות שווא (${FP})`, W - 196, 70);
+}
+
+// ---- שמירת הרצות והשוואה ביניהן -----------------------------------------
+const RUNS_KEY = 'ai-mentor-eval-runs';
+const loadRuns = () => { try { return JSON.parse(localStorage.getItem(RUNS_KEY) || '[]'); } catch { return []; } };
+const saveRuns = (r) => localStorage.setItem(RUNS_KEY, JSON.stringify(r));
+
+function currentMetrics() {
+  const t = parseFloat($('thr').value);
+  let TP=0, FN=0, FP=0, TN=0;
+  for (const p of predictions) {
+    const pred = p.score >= t ? 'abnormal' : 'normal';
+    if (p.truth === 'abnormal') pred === 'abnormal' ? TP++ : FN++;
+    else pred === 'abnormal' ? FP++ : TN++;
+  }
+  const n = TP+TN+FP+FN;
+  return { TP, FN, FP, TN, threshold: t, images: n,
+           acc: n ? (TP+TN)/n : 0,
+           sens: (TP+FN) ? TP/(TP+FN) : null,
+           spec: (TN+FP) ? TN/(TN+FP) : null };
+}
+
+function drawRuns() {
+  const runs = loadRuns();
+  const g = frame($('chCurve'), 'השוואת הרצות', 'הרצה', 'אחוז');
+  const { c, px, py, W, m } = g;
+  if (runs.length < 2) {
+    c.fillStyle = CH.ink3; c.font = '13px Segoe UI, Arial'; c.textAlign = 'center';
+    c.fillText(runs.length ? 'שמרו הרצה נוספת כדי להשוות' : 'טרם נשמרו הרצות',
+               (m.l + W - m.r) / 2, py(0.5));
+    return;
+  }
+  yTicks(g, 100, v => Math.round(v) + '%');
+  const xs = runs.map((_, i) => runs.length > 1 ? i / (runs.length - 1) : 0.5);
+  const series = [['דיוק', r => r.acc, CH.brand], ['רגישות', r => r.sens, CH.ab],
+                  ['ספציפיות', r => r.spec, CH.no]];
+  series.forEach(([, get, col]) => {
+    c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath();
+    let started = false;
+    runs.forEach((r, i) => {
+      const v = get(r); if (v == null) return;
+      started ? c.lineTo(px(xs[i]), py(v)) : (c.moveTo(px(xs[i]), py(v)), started = true);
+    });
+    c.stroke();
+    c.fillStyle = col;
+    runs.forEach((r, i) => {
+      const v = get(r); if (v == null) return;
+      c.beginPath(); c.arc(px(xs[i]), py(v), 4, 0, 7); c.fill();
+    });
+  });
+  c.font = '11px Segoe UI, Arial'; c.textAlign = 'center'; c.fillStyle = CH.ink3;
+  runs.forEach((r, i) => c.fillText(r.label.slice(0, 14), px(xs[i]), py(0) + 18));
+  c.textAlign = 'right'; c.font = '12px Segoe UI, Arial';
+  series.forEach(([lab, , col], i) => {
+    c.fillStyle = col; c.fillRect(W - 90 - i * 82, 36, 11, 11);
+    c.fillStyle = CH.ink2; c.fillText(lab, W - 96 - i * 82, 46);
+  });
+}
+
+function redrawCharts() {
+  if (!predictions.length) return;
+  drawHist(); drawThreshold(); drawPie(); drawRuns();
+  const n = loadRuns().length;
+  $('runCount').textContent = n ? `${n} הרצות שמורות` : 'אין הרצות שמורות';
+}
+
+function downloadCanvas(id, name) {
+  const a = document.createElement('a');
+  a.href = $(id).toDataURL('image/png');
+  a.download = name + '.png';
+  a.click();
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dl]');
+  if (b) downloadCanvas(b.dataset.dl, b.dataset.name || 'chart');
+});
+
+$('saveRun').addEventListener('click', () => {
+  if (!predictions.length) { toastLike('אין תוצאות לשמור'); return; }
+  const label = ($('runLabel').value || '').trim() || `הרצה ${loadRuns().length + 1}`;
+  const runs = loadRuns();
+  runs.push(Object.assign({ label, at: new Date().toISOString() }, currentMetrics()));
+  saveRuns(runs);
+  $('runLabel').value = '';
+  redrawCharts();
+});
+
+$('clearRuns').addEventListener('click', () => {
+  if (loadRuns().length && !confirm('למחוק את כל ההרצות השמורות?')) return;
+  saveRuns([]); redrawCharts();
+});
+
+$('runsCsvBtn').addEventListener('click', () => {
+  const runs = loadRuns();
+  if (!runs.length) { toastLike('אין הרצות שמורות'); return; }
+  const rows = [['label','images','threshold','accuracy','sensitivity','specificity','TP','FN','FP','TN','saved_at']];
+  for (const r of runs) {
+    rows.push([r.label, r.images, r.threshold.toFixed(2),
+      (r.acc*100).toFixed(1), r.sens==null?'':(r.sens*100).toFixed(1),
+      r.spec==null?'':(r.spec*100).toFixed(1), r.TP, r.FN, r.FP, r.TN, r.at]);
+  }
+  downloadText('runs_comparison.csv', '﻿' + rows.map(r => r.join(',')).join('\n'));
+});
+
+function downloadText(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.download = name; a.click();
+}
+
+function toastLike(msg) {
+  const s = $('status'); const old = s.textContent;
+  s.textContent = msg; setTimeout(() => { s.textContent = old; }, 2500);
+}
+
 // ---- ייצוא --------------------------------------------------------------
+$('csvBtn2').addEventListener('click', () => $('csvBtn').click());
+
 $('csvBtn').addEventListener('click', () => {
   const t = parseFloat($('thr').value);
   const rows = [['image_path','true_label','predicted_label','abnormal_score','threshold','correct']];
