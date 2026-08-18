@@ -45,8 +45,9 @@ async function fileToServer(kind, filename, blob) {
                            kind, filename, mimeType: blob.type, base64 }),
   });
   const data = await resp.json();
-  if (!data.success) throw new Error(data.error || 'התיוג נכשל');
-  return data.data;
+  // מבנה התשובה של השרת: {ok, result} או {ok:false, error} - זהה ל-api.js
+  if (!data.ok) throw new Error(data.error || 'התיוק נכשל');
+  return data.result;
 }
 
 /**

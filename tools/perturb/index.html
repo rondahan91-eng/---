@@ -339,8 +339,9 @@ async function fileToServer(kind, filename, blob){
     body:JSON.stringify({action:'saveArtifact', token:u.token, kind, filename,
                          mimeType:blob.type, base64}) });
   const d=await resp.json();
-  if(!d.success) throw new Error(d.error||'התיוק נכשל');
-  return d.data;
+  // מבנה התשובה של השרת: {ok, result} או {ok:false, error} - זהה ל-api.js
+  if(!d.ok) throw new Error(d.error||'התיוק נכשל');
+  return d.result;
 }
 
 async function exportArtifact(kind, filename, source, mimeType){
