@@ -875,11 +875,64 @@ const slug = s => (s || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g,
 /** מקדים את שם התלמיד לכל הורדה, כך שקובץ לא מאבד את בעליו */
 const fname = base => (who ? slug(who) + '__' : '') + base;
 
+
+/* ---- תיוק אוטומטי -----------------------------------------------------
+   כל ייצוא יורד למחשב *וגם* מתויק בשרת, אם יש התחברות. ההורדה מתרחשת תמיד,
+   גם כשהתיוק נכשל, כדי שתקלת רשת לא תגזול מהתלמיד/ה את התוצר.
+   מקור: tools/_filing.js                                                */
+const API_KEY_LS='ai-mentor-api-url';
+const sessionUser=()=>{ try{return JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null');}catch{return null;} };
+const apiUrl=()=>localStorage.getItem(API_KEY_LS)||'';
+const filingEnabled=()=>{ const u=sessionUser(); return !!(u&&u.token&&apiUrl()); };
+
+async function fileToServer(kind, filename, blob){
+  const u=sessionUser();
+  const base64=await new Promise((res,rej)=>{ const r=new FileReader();
+    r.onload=()=>res(String(r.result).split(',')[1]);
+    r.onerror=()=>rej(new Error('קריאת הקובץ נכשלה')); r.readAsDataURL(blob); });
+  const resp=await fetch(apiUrl(),{ method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},   // מונע preflight מול Apps Script
+    body:JSON.stringify({action:'saveArtifact', token:u.token, kind, filename,
+                         mimeType:blob.type, base64}) });
+  const d=await resp.json();
+  if(!d.success) throw new Error(d.error||'התיוק נכשל');
+  return d.data;
+}
+
+async function exportArtifact(kind, filename, source, mimeType){
+  let blob;
+  // instanceof נשבר בין חלונות (iframe, חלון חדש): שם Blob הוא בנאי אחר,
+  // והבדיקה הייתה נכשלת בשקט ומייצרת קובץ שמכיל "[object Blob]".
+  const isBlob = o => o && Object.prototype.toString.call(o)==='[object Blob]';
+  if(isBlob(source)) blob=source;
+  else if(source && source.tagName==='CANVAS')
+    blob=await new Promise(r=>source.toBlob(r,'image/png'));
+  else blob=new Blob(['﻿'+source],{type:mimeType||'text/csv;charset=utf-8'});
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+
+  if(!filingEnabled()){ filingNote('הקובץ ירד למחשב. אין תיוק — לא מחובר/ת למערכת.'); return; }
+  filingNote('מתייק את '+filename+'...');
+  try{ const r=await fileToServer(kind,filename,blob);
+       filingNote('תויק בתיקייה "'+r.kind+'" · '+filename); }
+  catch(e){ filingNote('התיוק נכשל ('+e.message+'). הקובץ ירד למחשב.'); }
+}
+
+function filingNote(msg){
+  let el=document.getElementById('filingNote');
+  if(!el){ el=document.createElement('div'); el.id='filingNote';
+    el.style.cssText='position:fixed;inset-block-end:18px;inset-inline-start:18px;z-index:99;'+
+      'background:#0d1f2b;color:#fff;font-size:12.5px;padding:9px 15px;border-radius:10px;'+
+      'box-shadow:0 4px 16px rgba(0,0,0,.22);max-width:min(420px,80vw)';
+    document.body.appendChild(el); }
+  el.textContent=msg; el.style.display='block';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none', 6000);
+}
+
 function downloadCanvas(id, name) {
-  const a = document.createElement('a');
-  a.href = $(id).toDataURL('image/png');
-  a.download = fname(name) + '.png';
-  a.click();
+  exportArtifact('charts', fname(name) + '.png', $(id));
 }
 
 document.addEventListener('click', (e) => {
@@ -911,14 +964,8 @@ $('runsCsvBtn').addEventListener('click', () => {
       (r.acc*100).toFixed(1), r.sens==null?'':(r.sens*100).toFixed(1),
       r.spec==null?'':(r.spec*100).toFixed(1), r.TP, r.FN, r.FP, r.TN, r.at]);
   }
-  downloadText(fname('runs_comparison.csv'), '﻿' + rows.map(r => r.join(',')).join('\n'));
+  exportArtifact('charts', fname('runs_comparison.csv'), rows.map(r => r.join(',')).join('\n'));
 });
-
-function downloadText(name, text) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
-  a.download = name; a.click();
-}
 
 function toastLike(msg) {
   const s = $('status'); const old = s.textContent;
@@ -937,11 +984,8 @@ $('csvBtn').addEventListener('click', () => {
     rows.push([`"${p.fullPath || p.name}"`, p.truth, pred,
                p.score.toFixed(4), t.toFixed(2), pred===p.truth ? '1':'0']);
   }
-  const csv = '﻿' + rows.map(r => r.join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-  a.download = fname('evaluation_results.csv');
-  a.click();
+  exportArtifact('charts', fname('evaluation_results.csv'),
+    rows.map(r => r.join(',')).join('\n'));
 });
 
 initIdentity();

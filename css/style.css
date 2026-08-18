@@ -228,6 +228,18 @@ label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2)
 .step.done .txt { color: var(--ink); }
 .step.active .txt { color: var(--ink); font-weight: 600; }
 
+.tools { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; }
+.tools h4 { font-size: 11px; letter-spacing: .6px; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 10px; }
+.tool-link {
+  display: block; text-decoration: none; padding: 8px 10px; margin-bottom: 6px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--surface);
+}
+.tool-link:hover { border-color: var(--brand); background: var(--brand-soft); }
+.tool-link b { display: block; font-size: 13px; color: var(--ink); }
+.tool-link span { font-size: 11.5px; color: var(--ink-3); }
+.tool-link:hover b { color: var(--brand-2); }
+
 .rail-tip {
   margin-top: auto; font-size: 12px; color: var(--ink-2); line-height: 1.7;
   background: var(--brand-soft); border: 1px solid #b8ecf5;

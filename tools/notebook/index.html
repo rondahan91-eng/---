@@ -547,12 +547,11 @@ $('copyBtn').onclick = async () => {
   catch { $('out').style.display = 'block'; $('out').textContent = buildText(); flash('העתיקו מהתיבה'); }
 };
 $('txtBtn').onclick = () => {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([buildText()], { type: 'text/plain;charset=utf-8' }));
   const who = slug($('student').value);
-  a.download = `${who ? who + '__' : ''}ניסוי_${slug(EXPERIMENTS[exp].name)}_${$('date').value}.txt`
+  const name = `${who ? who + '__' : ''}ניסוי_${slug(EXPERIMENTS[exp].name)}_${$('date').value}.txt`
     .replace(/[\\/:*?"<>|]/g, '-');
-  a.click();
+  exportArtifact('notebook', name,
+    new Blob([buildText()], { type: 'text/plain;charset=utf-8' }));
 };
 $('printBtn').onclick = () => window.print();
 const flash = m => { $('saveStatus').textContent = m; setTimeout(() => $('saveStatus').textContent = '', 2500); };
@@ -700,6 +699,62 @@ function initIdentity() {
   if (saved && !$('student').value) $('student').value = saved;
   $('student').addEventListener('input', e =>
     localStorage.setItem(WHO_KEY, e.target.value.trim()));
+}
+
+
+/* ---- תיוק אוטומטי -----------------------------------------------------
+   כל ייצוא יורד למחשב *וגם* מתויק בשרת, אם יש התחברות. ההורדה מתרחשת תמיד,
+   גם כשהתיוק נכשל, כדי שתקלת רשת לא תגזול מהתלמיד/ה את התוצר.
+   מקור: tools/_filing.js                                                */
+const API_KEY_LS='ai-mentor-api-url';
+const sessionUser=()=>{ try{return JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null');}catch{return null;} };
+const apiUrl=()=>localStorage.getItem(API_KEY_LS)||'';
+const filingEnabled=()=>{ const u=sessionUser(); return !!(u&&u.token&&apiUrl()); };
+
+async function fileToServer(kind, filename, blob){
+  const u=sessionUser();
+  const base64=await new Promise((res,rej)=>{ const r=new FileReader();
+    r.onload=()=>res(String(r.result).split(',')[1]);
+    r.onerror=()=>rej(new Error('קריאת הקובץ נכשלה')); r.readAsDataURL(blob); });
+  const resp=await fetch(apiUrl(),{ method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},   // מונע preflight מול Apps Script
+    body:JSON.stringify({action:'saveArtifact', token:u.token, kind, filename,
+                         mimeType:blob.type, base64}) });
+  const d=await resp.json();
+  if(!d.success) throw new Error(d.error||'התיוק נכשל');
+  return d.data;
+}
+
+async function exportArtifact(kind, filename, source, mimeType){
+  let blob;
+  // instanceof נשבר בין חלונות (iframe, חלון חדש): שם Blob הוא בנאי אחר,
+  // והבדיקה הייתה נכשלת בשקט ומייצרת קובץ שמכיל "[object Blob]".
+  const isBlob = o => o && Object.prototype.toString.call(o)==='[object Blob]';
+  if(isBlob(source)) blob=source;
+  else if(source && source.tagName==='CANVAS')
+    blob=await new Promise(r=>source.toBlob(r,'image/png'));
+  else blob=new Blob(['﻿'+source],{type:mimeType||'text/csv;charset=utf-8'});
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+
+  if(!filingEnabled()){ filingNote('הקובץ ירד למחשב. אין תיוק — לא מחובר/ת למערכת.'); return; }
+  filingNote('מתייק את '+filename+'...');
+  try{ const r=await fileToServer(kind,filename,blob);
+       filingNote('תויק בתיקייה "'+r.kind+'" · '+filename); }
+  catch(e){ filingNote('התיוק נכשל ('+e.message+'). הקובץ ירד למחשב.'); }
+}
+
+function filingNote(msg){
+  let el=document.getElementById('filingNote');
+  if(!el){ el=document.createElement('div'); el.id='filingNote';
+    el.style.cssText='position:fixed;inset-block-end:18px;inset-inline-start:18px;z-index:99;'+
+      'background:#0d1f2b;color:#fff;font-size:12.5px;padding:9px 15px;border-radius:10px;'+
+      'box-shadow:0 4px 16px rgba(0,0,0,.22);max-width:min(420px,80vw)';
+    document.body.appendChild(el); }
+  el.textContent=msg; el.style.display='block';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none', 6000);
 }
 
 const slug = s => (s || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '_');

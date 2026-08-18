@@ -14,6 +14,22 @@ const SHEET_CHECKINS = 'WeeklyCheckIns';
 const SHEET_HELPCHATS = 'HelpChatLog';
 const SHEET_SESSIONS = 'Sessions';
 const SHEET_USAGE = 'Usage';
+const SHEET_ARTIFACTS = 'Artifacts';
+
+/**
+ * תיקיית-על אחת, ובתוכה תיקייה לכל תלמיד/ה עם תת-תיקיות לפי סוג התוצר.
+ * ה-kind מגיע מהדפדפן ולכן הוא נבדק מול הרשימה הזו בלבד - נתיב שנבנה
+ * ממחרוזת חופשית של הלקוח מאפשר כתיבה לכל מקום ב-Drive.
+ */
+const ARTIFACT_KINDS = {
+  charts:   '01_גרפים',
+  heatmaps: '02_מפות קשב',
+  perturb:  '03_הפרעות',
+  notebook: '04_מחברת ניסוי',
+  checkin:  '05_צ׳ק-אין שבועי',
+};
+const ARTIFACT_MAX_BYTES = 6 * 1024 * 1024;   // תרשים או מפת קשב הם עשרות KB
+const ARTIFACT_WEEKLY_CAP = 300;              // תקרה שמונעת העלאה בלולאה
 
 // תוקף טוקן התחברות. אחרי הזמן הזה נדרשת התחברות מחדש.
 const TOKEN_TTL_HOURS = 24;
@@ -87,6 +103,14 @@ function routeAction(action, payload) {
     case 'getCurrentWeek':
       requireAuth(payload);
       return getCurrentWeekInfo();
+    // התיוק נעשה תמיד לפי הזהות שבטוקן, ולעולם לא לפי studentId שנשלח
+    // בבקשה - אחרת תלמיד/ה יכול/ה היה לתייק קבצים בתיקייה של אחר/ת.
+    case 'saveArtifact':
+      return saveArtifact(requireAuth(payload).studentId, payload.kind,
+        payload.filename, payload.mimeType, payload.base64);
+    case 'listArtifacts':
+      requireSelfOrAdmin(payload, payload.studentId);
+      return listArtifacts(payload.studentId);
 
     // --- מורה בלבד ---
     case 'resetStudentPassword':
@@ -190,6 +214,8 @@ SHEET_SCHEMAS[SHEET_CHECKINS] = ['checkInId', 'studentId', 'weekNumber', 'date',
 SHEET_SCHEMAS[SHEET_HELPCHATS] = ['logId', 'studentId', 'weekNumber', 'date', 'transcriptJson'];
 SHEET_SCHEMAS[SHEET_SESSIONS] = ['token', 'studentId', 'role', 'createdAt', 'expiresAt'];
 SHEET_SCHEMAS[SHEET_USAGE] = ['studentId', 'weekNumber', 'messageCount', 'lastMessageAt'];
+SHEET_SCHEMAS[SHEET_ARTIFACTS] = ['artifactId', 'studentId', 'weekNumber', 'kind', 'filename',
+  'fileId', 'url', 'sizeBytes', 'createdAt'];
 
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -648,11 +674,88 @@ function appendHelpChatTurn(studentId, weekNumber, fullHistory) {
 }
 
 function saveImageToDrive(studentId, weekNumber, idx, image) {
-  const folder = getOrCreateFolderPath(['AI Mentor - תמונות תלמידים', studentId]);
+  const folder = artifactFolder(studentId, 'checkin');
   const blob = Utilities.newBlob(Utilities.base64Decode(image.base64), image.mimeType,
     'week' + weekNumber + '_img' + idx);
   const file = folder.createFile(blob);
   return file.getUrl();
+}
+
+// ------------------------------------------------------------ תיוק תוצרי הכלים
+/** שם תיקייה יציב וקריא. ה-username ייחודי ולכן הוא מונע התנגשות בשמות זהים. */
+function studentFolderName(studentId) {
+  const u = sheetToObjects(getSheet(SHEET_USERS)).find(x => x.studentId === studentId);
+  if (!u) return studentId;
+  const name = ((u.firstName || '') + ' ' + (u.lastName || '')).trim();
+  return (name ? name + ' - ' : '') + (u.username || studentId);
+}
+
+function driveRootName() {
+  return PropertiesService.getScriptProperties().getProperty('DRIVE_ROOT')
+    || 'AI Mentor · הנדסה ביו-רפואית';
+}
+
+function artifactFolder(studentId, kind) {
+  const sub = ARTIFACT_KINDS[kind];
+  if (!sub) throw new Error('סוג תוצר לא מוכר: ' + kind);
+  return getOrCreateFolderPath([driveRootName(), studentFolderName(studentId), sub]);
+}
+
+/** מנקה כל דבר שיכול להפוך שם קובץ לנתיב. */
+function safeFileName(name) {
+  return String(name || 'file')
+    .replace(/[\\/ -]/g, '-')
+    .replace(/^\.+/, '')
+    .slice(0, 120) || 'file';
+}
+
+function countArtifactsThisWeek(studentId, weekNumber) {
+  return sheetToObjects(getSheet(SHEET_ARTIFACTS))
+    .filter(a => a.studentId === studentId && Number(a.weekNumber) === Number(weekNumber)).length;
+}
+
+/**
+ * מקבל תוצר שהתלמיד/ה ייצא/ה מאחד הכלים ומתייק אותו תחת התיקייה שלו/ה.
+ * הזהות נלקחת מהטוקן ולא משדה בבקשה - אחרת אפשר היה לתייק בשם מישהו אחר.
+ */
+function saveArtifact(studentId, kind, filename, mimeType, base64) {
+  if (!ARTIFACT_KINDS[kind]) throw new Error('סוג תוצר לא מוכר: ' + kind);
+  if (!base64) throw new Error('לא התקבל תוכן הקובץ');
+
+  const bytes = Math.floor(String(base64).length * 3 / 4);
+  if (bytes > ARTIFACT_MAX_BYTES) {
+    throw new Error('הקובץ גדול מדי (' + Math.round(bytes / 1024 / 1024) + 'MB). ' +
+      'המותר עד ' + (ARTIFACT_MAX_BYTES / 1024 / 1024) + 'MB.');
+  }
+
+  const week = Number(getCurrentWeekInfo().weekNumber) || 0;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (countArtifactsThisWeek(studentId, week) >= ARTIFACT_WEEKLY_CAP) {
+      throw new Error('הגעת לתקרת הקבצים השבועית (' + ARTIFACT_WEEKLY_CAP + '). ' +
+        'פנה/י למורה אם נדרש יותר.');
+    }
+    const name = safeFileName(filename);
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64),
+      mimeType || 'application/octet-stream', name);
+    const file = artifactFolder(studentId, kind).createFile(blob);
+
+    const id = 'ART' + new Date().getTime();
+    getSheet(SHEET_ARTIFACTS).appendRow([id, studentId, week, kind, name,
+      file.getId(), file.getUrl(), bytes, new Date()]);
+    return { ok: true, url: file.getUrl(), filename: name, kind: ARTIFACT_KINDS[kind], week: week };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function listArtifacts(studentId) {
+  return sheetToObjects(getSheet(SHEET_ARTIFACTS))
+    .filter(a => a.studentId === studentId)
+    .map(a => ({ kind: a.kind, folder: ARTIFACT_KINDS[a.kind] || a.kind, filename: a.filename,
+                 url: a.url, weekNumber: a.weekNumber, createdAt: a.createdAt }))
+    .reverse();
 }
 
 function getOrCreateFolderPath(pathParts) {
@@ -667,7 +770,8 @@ function getOrCreateFolderPath(pathParts) {
 /** יוצר/מעדכן קובץ Google Docs מצטבר לתלמיד, עם סעיף חדש לכל שבוע מוערך */
 function createWeeklyDoc(studentId, weekNumber, fullHistory, image1Url, image2Url) {
   const user = sheetToObjects(getSheet(SHEET_USERS)).find(u => u.studentId === studentId);
-  const folder = getOrCreateFolderPath(['AI Mentor - יומני תלמידים']);
+  // היומן יושב בתיקייה של התלמיד/ה, לצד התוצרים - ולא בערימה נפרדת לפי סוג
+  const folder = getOrCreateFolderPath([driveRootName(), studentFolderName(studentId)]);
   const docName = 'יומן AI Mentor - ' + (user ? user.firstName + ' ' + user.lastName : studentId);
   const files = folder.getFilesByName(docName);
   let doc;

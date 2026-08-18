@@ -11,3 +11,8 @@ export const CONFIG = {
   APP_NAME: 'AI Mentor - הנדסה ביו-רפואית',
   SESSION_KEY: 'ai-mentor-biorefua-session',
 };
+
+// כלי הניתוח הם קבצים עצמאיים ואינם מייבאים את המודול הזה. הם קוראים את
+// כתובת השרת מכאן דרך localStorage, כך שהתיוק האוטומטי עובד ברגע שהמערכת
+// נטענה פעם אחת באותו דפדפן - בלי לשכפל את הכתובת בשלושה קבצים.
+try { localStorage.setItem('ai-mentor-api-url', CONFIG.API_URL || ''); } catch {}

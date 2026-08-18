@@ -86,6 +86,13 @@ export async function mountStudentChat(app, session, onLogout) {
          <span class="dot">${done ? '✓' : ''}</span><span class="txt">${label}</span>
        </div>`;
 
+    // rel="opener" במכוון: sessionStorage הוא פר-לשונית, ולשונית שנפתחת מכאן
+    // יורשת עותק שלו. זה מה שמאפשר לכלי לזהות את התלמיד/ה ולתייק בשמו/ה -
+    // כלי שנפתח מסימנייה או מהקלדת כתובת לא יראה שום חיבור.
+    const toolLink = (href, name, sub) =>
+      `<a class="tool-link" href="${href}" target="_blank" rel="opener">
+         <b>${name}</b><span>${sub}</span></a>`;
+
     return `
     <aside class="rail">
       <div class="rail-top">
@@ -113,6 +120,17 @@ export async function mountStudentChat(app, session, onLogout) {
         ${step(imagesDone, !imagesDone, '2 תמונות התקדמות + סיכום')}
         ${step(scored, answering, 'מענה על שאלות המנטור')}
         ${step(scored, false, 'קבלת ציון ומשוב')}
+      </div>
+
+      <div class="tools">
+        <h4>כלי המחקר</h4>
+        ${toolLink('../tools/evaluate/', 'הערכת מודל', 'דיוק, רגישות, מפת קשב')}
+        ${toolLink('../tools/perturb/', 'כלי הפרעות', 'מה באמת מניע את ההחלטה')}
+        ${toolLink('../tools/notebook/', 'מחברת ניסוי', 'השערה, מדידה, מסקנה')}
+        <p class="form-note" style="margin-top:8px">
+          פתחו אותם מכאן — כך כל ייצוא מתויק אוטומטית בתיקייה שלכם.
+          כלי שנפתח מסימנייה לא יזהה אתכם, והקובץ יישאר על המחשב בלבד.
+        </p>
       </div>
 
       <div class="rail-tip">
