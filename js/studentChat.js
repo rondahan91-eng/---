@@ -124,9 +124,9 @@ export async function mountStudentChat(app, session, onLogout) {
 
       <div class="tools">
         <h4>כלי המחקר</h4>
-        ${toolLink('../tools/evaluate/', 'הערכת מודל', 'דיוק, רגישות, מפת קשב')}
-        ${toolLink('../tools/perturb/', 'כלי הפרעות', 'מה באמת מניע את ההחלטה')}
-        ${toolLink('../tools/notebook/', 'מחברת ניסוי', 'השערה, מדידה, מסקנה')}
+        ${toolLink('tools/evaluate/', 'הערכת מודל', 'דיוק, רגישות, מפת קשב')}
+        ${toolLink('tools/perturb/', 'כלי הפרעות', 'מה באמת מניע את ההחלטה')}
+        ${toolLink('tools/notebook/', 'מחברת ניסוי', 'השערה, מדידה, מסקנה')}
         <p class="form-note" style="margin-top:8px">
           פתחו אותם מכאן — כך כל ייצוא מתויק אוטומטית בתיקייה שלכם.
           כלי שנפתח מסימנייה לא יזהה אתכם, והקובץ יישאר על המחשב בלבד.
