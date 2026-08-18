@@ -704,7 +704,8 @@ function artifactFolder(studentId, kind) {
 /** מנקה כל דבר שיכול להפוך שם קובץ לנתיב. */
 function safeFileName(name) {
   return String(name || 'file')
-    .replace(/[\\/ -]/g, '-')
+    .replace(/[\u0000-\u001f]/g, '')        // תווי בקרה
+    .replace(/[\\/:*?"<>|]/g, '-')          // מפרידי נתיב ותווים אסורים
     .replace(/^\.+/, '')
     .slice(0, 120) || 'file';
 }
