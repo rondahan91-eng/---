@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>מחברת ניסוי · AI Mentor</title>
+<style>
+  :root{
+    --bg:#eef3f7; --surface:#fff; --line:#e0e9f0; --line2:#ccdae5;
+    --ink:#0d1f2b; --ink2:#4a6478; --ink3:#8aa2b3;
+    --brand:#0891b2; --brand2:#0e7490; --brand-soft:#e6fafd;
+    --ok:#059669; --ok-soft:#e9fbf3; --warn:#b45309; --warn-soft:#fff8ec;
+    --err:#dc2626; --err-soft:#fef2f2;
+    --r:14px; --sh:0 2px 10px rgba(13,31,43,.07);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:'Segoe UI','Assistant',Arial,sans-serif;line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .lede{color:var(--ink2);font-size:14px;margin:0 0 22px}
+  .card{background:var(--surface);border:1px solid var(--line);
+        border-radius:var(--r);box-shadow:var(--sh);padding:20px;margin-bottom:18px}
+  .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:9px}
+  .step{display:inline-flex;align-items:center;justify-content:center;
+        width:22px;height:22px;border-radius:50%;background:var(--brand);
+        color:#fff;font-size:12px;font-weight:700;flex:none}
+  .hint{color:var(--ink2);font-size:13px;margin:0 0 12px}
+  .note{background:var(--brand-soft);border:1px solid #bfeef7;border-radius:10px;
+        padding:11px 13px;font-size:13px;color:var(--ink2);margin:10px 0 0}
+  .note.warn{background:var(--warn-soft);border-color:#f5dcb3}
+  .note.ok{background:var(--ok-soft);border-color:#bfe9d6}
+  .note b{color:var(--ink)}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin:0 0 5px}
+  input[type=text],select,textarea{
+    width:100%;font:inherit;font-size:14px;color:var(--ink);background:#fff;
+    border:1px solid var(--line2);border-radius:9px;padding:8px 11px}
+  textarea{resize:vertical;min-height:78px;line-height:1.65}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);
+    outline-offset:-1px;border-color:var(--brand)}
+  input:disabled,textarea:disabled,select:disabled{background:#f4f8fb;color:var(--ink2)}
+  textarea[readonly]{background:#f7fafc;color:var(--ink)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:170px}
+  button{font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+         background:var(--brand);color:#fff;border:1px solid var(--brand);
+         border-radius:9px;padding:8px 15px}
+  button:hover{background:var(--brand2);border-color:var(--brand2)}
+  button.secondary{background:#fff;color:var(--brand2);border-color:var(--line2)}
+  button.secondary:hover{background:var(--brand-soft);border-color:var(--brand)}
+  button.ghost{background:transparent;color:var(--ink2);border-color:transparent;
+               padding:6px 9px;font-weight:500}
+  button.ghost:hover{background:#f0f5f9;color:var(--ink)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  th{font-size:12px;color:var(--ink2);font-weight:600;background:#f7fafc}
+  td.num{font-variant-numeric:tabular-nums}
+  .muted{color:var(--ink3)}
+  .locked{opacity:.5;pointer-events:none}
+  .stamp{font-size:12px;color:var(--ok);font-weight:600}
+  .stamp.edited{color:var(--warn)}
+  .bar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{font-size:12.5px;padding:5px 11px;border-radius:20px;background:#fff;
+        border:1px solid var(--line2);cursor:pointer;color:var(--ink2)}
+  .chip:hover{border-color:var(--brand);color:var(--brand2)}
+  .chip.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .fixed-list{margin:8px 0 0;padding:0;list-style:none}
+  .fixed-list li{font-size:13px;color:var(--ink2);padding:3px 0}
+  .fixed-list input{width:auto;margin-left:7px;vertical-align:-1px}
+  #out{white-space:pre-wrap;font-family:'Consolas',monospace;font-size:12px;
+       background:#f7fafc;border:1px solid var(--line);border-radius:10px;
+       padding:14px;max-height:340px;overflow:auto;margin-top:12px;display:none}
+  @media print{
+    body{background:#fff}
+    .card{box-shadow:none;break-inside:avoid;page-break-inside:avoid}
+    .bar,.chips,button,#out{display:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>מחברת ניסוי</h1>
+  <p class="lede">
+    ניסוי אינו "אימנתי מודל וראיתי מה יצא". ניסוי הוא שאלה, השערה שנכתבה
+    <b>לפני</b> המדידה, תנאים מבוקרים, ומסקנה שנובעת מהמספרים.
+    המחברת מלווה את ארבעת השלבים ומייצאת סיכום מוכן ליומן ולצ׳ק-אין השבועי.
+  </p>
+
+  <!-- 1 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2><span class="step">1</span> איזה ניסוי</h2>
+    <div class="chips" id="expChips"></div>
+    <div class="row">
+      <div>
+        <label>מאגר</label>
+        <select id="dataset">
+          <option value="malaria">מלריה — תאי דם</option>
+          <option value="chest">צילומי חזה</option>
+          <option value="mura">MURA — צילומי גפיים</option>
+          <option value="other">אחר</option>
+        </select>
+      </div>
+      <div>
+        <label>שם התלמיד/ה</label>
+        <input type="text" id="student" placeholder="שם מלא">
+      </div>
+      <div>
+        <label>תאריך</label>
+        <input type="text" id="date">
+      </div>
+    </div>
+    <div class="note" id="qBox"></div>
+  </div>
+
+  <!-- 2 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2><span class="step">2</span> השערה — נכתבת לפני המדידה</h2>
+    <p class="hint" id="hypHint"></p>
+    <label>מה אני צופה שיקרה, <b>ולמה</b>?</label>
+    <textarea id="hypothesis" placeholder="אני צופה ש...&#10;הנימוק שלי: ..."></textarea>
+    <div class="bar">
+      <button id="lockBtn">נעילת ההשערה ומעבר למדידה</button>
+      <button id="unlockBtn" class="secondary" style="display:none">פתיחה לעריכה</button>
+      <span class="stamp" id="lockStamp"></span>
+    </div>
+    <div class="note warn">
+      <b>למה נועלים?</b> השערה שנכתבת אחרי שרואים את התוצאה תמיד מתאמתת,
+      וכך הניסוי מפסיק ללמד משהו. הנעילה חותמת את השעה. אפשר לפתוח לעריכה —
+      אבל אז הסיכום יציין זאת, כי גם זו עובדה על הניסוי.
+    </div>
+  </div>
+
+  <!-- 3 -------------------------------------------------------------- -->
+  <div id="afterLock" class="locked">
+
+  <div class="card">
+    <h2><span class="step">3</span> תנאים — מה השתנה ומה נשמר קבוע</h2>
+    <p class="hint">אם השתנה יותר ממשתנה אחד, לא נדע מי אחראי לתוצאה.</p>
+    <label>המשתנה שהשתנה</label>
+    <div id="varBox" class="note" style="margin-top:0"></div>
+    <label style="margin-top:14px">מה נשמר קבוע — לסמן כל מה שווידאתי</label>
+    <ul class="fixed-list" id="fixedList"></ul>
+    <label style="margin-top:14px">הערות על התנאים (אופציונלי)</label>
+    <textarea id="condNotes" style="min-height:56px"
+      placeholder="למשל: שיניתי גם את מספר סבבי האימון — כלומר הניסוי אינו נקי"></textarea>
+    <div class="note warn" id="trapBox"></div>
+  </div>
+
+  <!-- 4 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2><span class="step">4</span> מדידה</h2>
+    <p class="hint">
+      המספרים נשלפים מההרצות ששמרתם בכלי ההערכה — לא מוקלדים ביד.
+      לכל תנאי בוחרים את ההרצה המתאימה.
+    </p>
+    <div class="bar" style="margin:0 0 12px">
+      <button id="loadRunsBtn" class="secondary">טעינת הרצות מכלי ההערכה</button>
+      <button id="importBtn" class="secondary">ייבוא מקובץ runs_comparison.csv</button>
+      <input type="file" id="fileIn" accept=".csv" style="display:none">
+      <span class="muted" id="runsStatus" style="font-size:12.5px">טרם נטענו הרצות</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:20%">תנאי</th><th style="width:32%">הרצה</th>
+        <th>דיוק</th><th>רגישות</th><th>ספציפיות</th><th>תמונות</th>
+      </tr></thead>
+      <tbody id="mTable"></tbody>
+    </table>
+    <div class="note" id="metricBox"></div>
+  </div>
+
+  <!-- 5 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2><span class="step">5</span> תצפית בכלי הבדיקה</h2>
+    <p class="hint">
+      המספר אומר <i>כמה</i> טעה. כלי הבדיקה אומר <i>למה</i>. בלי החלק הזה
+      הניסוי מדווח ציון ולא ממצא.
+    </p>
+    <label>מפת קשב — על מה המודל הסתכל?</label>
+    <textarea id="attention"
+      placeholder="בדקתי N תמונות. באזור ... התרכז הקשב. שינוי מרבי בתחזית: ...%"></textarea>
+    <label style="margin-top:12px">האם נמצא קיצור דרך? (רקע, שוליים, סמן, גוון כללי)</label>
+    <textarea id="shortcut" style="min-height:56px"
+      placeholder="כן/לא — ומה הראיה"></textarea>
+    <div class="note">
+      <b>שימו לב למקרים החריגים:</b> מפה ריקה עם ביטחון של 100% אינה תקלה —
+      היא אומרת שההחלטה נשענת על מאפיין פרוס בכל התמונה ולא על אזור מקומי.
+      גם זו תצפית שראוי לתעד.
+    </div>
+  </div>
+
+  <!-- 6 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2><span class="step">6</span> מסקנה</h2>
+    <label>האם ההשערה התאמתה?</label>
+    <select id="verdict">
+      <option value="">— לבחור —</option>
+      <option value="yes">התאמתה</option>
+      <option value="partial">התאמתה חלקית</option>
+      <option value="no">הופרכה</option>
+      <option value="unclear">המדידה לא הכריעה</option>
+    </select>
+    <label style="margin-top:12px">מה אני יודע/ת עכשיו שלא ידעתי קודם?</label>
+    <textarea id="conclusion"></textarea>
+    <p class="hint" id="cPrompts" style="margin:8px 0 0"></p>
+    <label style="margin-top:12px">מה הניסוי הזה <b>לא</b> יכול להוכיח?</label>
+    <textarea id="limits" style="min-height:56px"
+      placeholder="מגבלות: גודל ערכת המבחן, מאגר יחיד, ..."></textarea>
+    <label style="margin-top:12px">השאלה הבאה שנפתחה</label>
+    <textarea id="next" style="min-height:56px"></textarea>
+    <div class="note ok">
+      השערה שהופרכה אינה כישלון. ניסוי שמפריך השערה מלמד יותר מניסוי
+      שמאשר את המובן מאליו — ובדוח הוא שווה יותר.
+    </div>
+  </div>
+
+  </div><!-- /afterLock -->
+
+  <!-- 7 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2><span class="step">7</span> שמירה וייצוא</h2>
+    <div class="bar" style="margin:0">
+      <button id="saveBtn">שמירת הרשומה</button>
+      <button id="exportBtn" class="secondary">יצירת סיכום ליומן</button>
+      <button id="copyBtn" class="secondary">העתקה ללוח</button>
+      <button id="txtBtn" class="secondary">הורדה כקובץ</button>
+      <button id="printBtn" class="secondary">הדפסה / PDF</button>
+      <button id="newBtn" class="ghost">רשומה חדשה</button>
+      <span class="muted" id="saveStatus" style="font-size:12.5px"></span>
+    </div>
+    <div class="note">
+      <b>לצ׳ק-אין השבועי צרפו שתי תמונות:</b> תרשים אחד מכלי ההערכה
+      (עקומה / התפלגות / סף) ומפת קשב אחת שמדגימה את הממצא. הסיכום שכאן
+      הוא הטקסט הנלווה.
+    </div>
+    <div id="out"></div>
+  </div>
+
+  <!-- 8 -------------------------------------------------------------- -->
+  <div class="card">
+    <h2>רשומות שמורות</h2>
+    <table>
+      <thead><tr><th>ניסוי</th><th>מאגר</th><th>תאריך</th><th>מסקנה</th><th></th></tr></thead>
+      <tbody id="entries"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* ---- הגדרות הניסויים -------------------------------------------------
+   לכל ניסוי שאלה משלו, תנאים משלו, ומלכודת משלו. טופס גנרי אחד היה
+   מייצר תיעוד גנרי, והמלכודות - שהן עיקר הלמידה - היו נעלמות.        */
+const EXPERIMENTS = {
+  curve: {
+    name: 'עקומת למידה',
+    question: 'כמה תמונות באמת צריך? האם עוד דאטה תמיד עוזר?',
+    variable: 'מספר תמונות האימון לכל מחלקה: 25 → 50 → 100 → 200 → 400',
+    conditions: ['n=25', 'n=50', 'n=100', 'n=200', 'n=400'],
+    fixed: ['יחס 50/50 בין המחלקות בכל הגדלים',
+            'אותה ערכת מבחן בכל ההרצות',
+            'אותן הגדרות אימון (סבבים, קצב למידה)',
+            'הערכות מקוננות — כל גודל מכיל את הקטן ממנו'],
+    trap: 'אם כל ערכה נדגמה מחדש באקראי, ההפרש בין נקודות עלול לנבוע מ<b>אילו</b> ' +
+          'תמונות נבחרו ולא מ<b>כמה</b>. הערכות שנוצרו בסקריפט מקוננות בדיוק כדי למנוע זאת.',
+    hint: 'לפני שמסתכלים: האם השיפור יימשך עד 400, או יתיישר קודם? ואיפה?',
+    focus: 'acc',
+    prompts: 'איפה העקומה מתיישרת? מה המשמעות המעשית — אם הייתם צריכים לתייג ' +
+             'עוד 400 תמונות ביד, האם זה היה משתלם? ומה זה אומר על טענות בסגנון "נאספו אלפי תמונות"?'
+  },
+  balance: {
+    name: 'יחסי איזון',
+    question: 'מה קורה כשמחלקה אחת נדירה, כמו במציאות?',
+    variable: 'היחס בין המחלקות: 50/50 → 70/30 → 90/10 (סך הכל קבוע: 400)',
+    conditions: ['יחס 50/50', 'יחס 70/30', 'יחס 90/10'],
+    fixed: ['סך כל תמונות האימון — 400 בכל התנאים',
+            'אותה ערכת מבחן <b>מאוזנת</b> בכל ההרצות',
+            'אותן הגדרות אימון'],
+    trap: 'הדיוק הכולל מטעה כאן. מודל שמאומן על 90/10 יכול לומר "תקין" תמיד ' +
+          'ולקבל ציון מרשים — בלי ללמוד דבר. רגישות וספציפיות בנפרד חושפות זאת מיד.',
+    hint: 'איזה מדד ייפגע קודם כשהמחלקה החריגה מתמעטת — הרגישות או הספציפיות? למה?',
+    focus: 'sens',
+    prompts: 'איזה מדד סיפר את האמת ואיזה הסתיר אותה? במחלה נדירה באוכלוסייה, ' +
+             'מה המשמעות של מודל עם ספציפיות גבוהה ורגישות נמוכה?'
+  },
+  source: {
+    name: 'הכללה בין מקורות',
+    question: 'האם המודל למד את הממצא הרפואי — או את המקור שממנו הגיעה התמונה?',
+    variable: 'מקור תמונות האימון: מקור א׳ בלבד מול מקור ב׳ בלבד',
+    conditions: ['אימון מקור א׳ · מבחן מקור א׳', 'אימון מקור א׳ · מבחן מקור ב׳',
+                 'אימון מקור ב׳ · מבחן מקור ב׳', 'אימון מקור ב׳ · מבחן מקור א׳'],
+    fixed: ['מספר תמונות זהה בשני התנאים',
+            'המחלקה שאין בה פיצול מקורות נשארת קבועה — היא הבקרה',
+            'אותן הגדרות אימון'],
+    trap: 'ציון גבוה על תמונות מאותו מקור אינו עדות ליכולת רפואית. ' +
+          'הפער בין "מקור מוכר" ל"מקור חדש" הוא גודלו של קיצור הדרך.',
+    hint: 'כמה אחוזים תרד ההצלחה כשעוברים למקור שהמודל לא ראה? נחשו מספר לפני המדידה.',
+    focus: 'acc',
+    prompts: 'מה גודל הצניחה? מה בתמונות של כל מקור יכול לשמש קיצור דרך — ' +
+             'ניגודיות, חיתוך, סמן, רקע? והאם מפת הקשב תומכת בהסבר?'
+  },
+  intervention: {
+    name: 'התערבות — תיקון הבעיה',
+    question: 'מצאתי חולשה. האם התיקון שהצעתי באמת עובד?',
+    variable: 'שינוי אחד ויחיד שאני מבצע/ת בדאטה או באימון',
+    conditions: ['לפני התיקון', 'אחרי התיקון'],
+    fixed: ['אותה ערכת מבחן, בדיוק אותה',
+            '<b>שינוי אחד בלבד</b> — לא שניים',
+            'אותן הגדרות אימון'],
+    trap: 'הפיתוי לשנות שני דברים יחד גדול, והמחיר הוא שלא נדע מה עבד. ' +
+          'בנוסף: תיקון כמעט תמיד גובה מחיר במדד אחר. חפשו גם אותו.',
+    hint: 'מה בדיוק אני משנה, ומה הסיבה שאני מאמין/ה שזה יעזור?',
+    focus: 'acc',
+    prompts: 'האם השתפר? מה המחיר — האם מדד אחר ירד? והאם מפת הקשב זזה ' +
+             'לאזור אחר, או שהתוצאה השתפרה מבלי שההסתכלות השתנתה?'
+  }
+};
+
+const ENTRIES_KEY = 'ai-mentor-notebook';
+const RUNS_KEY    = 'ai-mentor-eval-runs';
+
+let exp = 'curve', runs = [], picks = {}, lockedAt = null, wasEdited = false, editing = null;
+
+/* ---- שלב 1 ---- */
+function buildChips() {
+  $('expChips').innerHTML = '';
+  for (const [k, v] of Object.entries(EXPERIMENTS)) {
+    const b = document.createElement('button');
+    b.className = 'chip' + (k === exp ? ' on' : '');
+    b.textContent = v.name;
+    b.onclick = () => { exp = k; picks = {}; buildChips(); renderExp(); };
+    $('expChips').appendChild(b);
+  }
+}
+
+function renderExp() {
+  const e = EXPERIMENTS[exp];
+  $('qBox').innerHTML = `<b>השאלה:</b> ${e.question}`;
+  $('hypHint').textContent = e.hint;
+  $('varBox').innerHTML = e.variable;
+  $('trapBox').innerHTML = `<b>המלכודת בניסוי הזה:</b> ${e.trap}`;
+  $('cPrompts').innerHTML = 'שאלות מנחות: ' + e.prompts;
+  $('fixedList').innerHTML = e.fixed
+    .map((f, i) => `<li><input type="checkbox" id="fx${i}"><label for="fx${i}"
+        style="display:inline;font-weight:400;color:var(--ink2)">${f}</label></li>`).join('');
+  buildTable();
+}
+
+/* ---- שלב 4: מדידה ---- */
+function buildTable() {
+  const e = EXPERIMENTS[exp];
+  const opts = ['<option value="">— לבחור הרצה —</option>']
+    .concat(runs.map((r, i) => `<option value="${i}">${esc(r.label)}</option>`)).join('');
+  $('mTable').innerHTML = e.conditions.map((c, ci) => {
+    const r = picks[ci] != null ? runs[picks[ci]] : null;
+    return `<tr>
+      <td><b>${c}</b></td>
+      <td><select data-c="${ci}">${opts}</select></td>
+      <td class="num">${r ? pct(r.acc)  : '<span class="muted">—</span>'}</td>
+      <td class="num">${r ? pct(r.sens) : '<span class="muted">—</span>'}</td>
+      <td class="num">${r ? pct(r.spec) : '<span class="muted">—</span>'}</td>
+      <td class="num">${r ? r.images    : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join('');
+  $('mTable').querySelectorAll('select').forEach(s => {
+    const ci = s.dataset.c;
+    if (picks[ci] != null) s.value = picks[ci];
+    s.onchange = () => {
+      if (s.value === '') delete picks[ci]; else picks[ci] = +s.value;
+      buildTable();
+    };
+  });
+  summarize();
+}
+
+const pct = v => (v == null ? '—' : (v * 100).toFixed(1) + '%');
+const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+function summarize() {
+  const e = EXPERIMENTS[exp];
+  const rows = e.conditions.map((c, i) => picks[i] != null ? runs[picks[i]] : null);
+  const got = rows.filter(Boolean);
+  if (got.length < 2) {
+    $('metricBox').innerHTML = 'בוחרים הרצה לכל תנאי כדי לקבל את ההפרש. ' +
+      'נדרשים לפחות שני תנאים כדי שתהיה השוואה.';
+    return;
+  }
+  const key = e.focus, vals = got.map(r => r[key]).filter(v => v != null);
+  if (!vals.length) { $('metricBox').textContent = 'אין נתונים למדד הנבחר.'; return; }
+  const first = vals[0], last = vals[vals.length - 1], d = last - first;
+  const nm = { acc: 'הדיוק', sens: 'הרגישות', spec: 'הספציפיות' }[key];
+
+  // הערכים אחידים על פני התנאים - זו תוצאה, לא היעדר תוצאה
+  const spread = Math.max(...vals) - Math.min(...vals);
+  let verdict;
+  if (spread < 0.02) verdict = `<b>הערכים כמעט זהים (טווח ${pct(spread)}).</b> ` +
+      `המשתנה שבדקתם כמעט לא השפיע — וזה ממצא בפני עצמו, לא כישלון של הניסוי.`;
+  else if (spread < 0.08) verdict = `טווח של ${pct(spread)} — השפעה מתונה. ` +
+      `שווה לשאול אם היא גדולה מרעש בין הרצות חוזרות.`;
+  else verdict = `טווח של ${pct(spread)} — השפעה ברורה.`;
+
+  $('metricBox').innerHTML =
+    `<b>${nm}:</b> ${pct(first)} → ${pct(last)} (${d >= 0 ? '+' : ''}${(d*100).toFixed(1)} נק׳). ` +
+    verdict + (got.length < e.conditions.length
+      ? ` <span class="muted">(${got.length} מתוך ${e.conditions.length} תנאים מולאו)</span>` : '');
+}
+
+/* ---- טעינת הרצות ---- */
+function setRuns(list, src) {
+  runs = list;
+  $('runsStatus').textContent = runs.length
+    ? `${runs.length} הרצות נטענו ${src}` : `לא נמצאו הרצות ${src}`;
+  buildTable();
+}
+
+$('loadRunsBtn').onclick = () => {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(RUNS_KEY) || '[]'); } catch {}
+  if (!list.length) {
+    $('runsStatus').innerHTML = 'לא נמצאו הרצות בדפדפן. אם כלי ההערכה נפתח ' +
+      'מכתובת אחרת, השתמשו בייבוא מקובץ ה-CSV.';
+    return;
+  }
+  setRuns(list, 'מהדפדפן');
+};
+
+$('importBtn').onclick = () => $('fileIn').click();
+$('fileIn').onchange = ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const lines = rd.result.replace(/^﻿/, '').trim().split(/\r?\n/);
+    const head = lines.shift().split(',');
+    const ix = n => head.indexOf(n);
+    const num = v => (v === '' || v == null) ? null : +v / 100;
+    const list = lines.filter(l => l.trim()).map(l => {
+      const c = l.split(',');
+      return { label: c[ix('label')], images: +c[ix('images')],
+               acc: num(c[ix('accuracy')]), sens: num(c[ix('sensitivity')]),
+               spec: num(c[ix('specificity')]) };
+    });
+    setRuns(list, 'מהקובץ');
+  };
+  rd.readAsText(f);
+};
+
+/* ---- נעילת ההשערה ----
+   פתיחה מחדש מותרת אך מסומנת. חסימה מוחלטת רק הייתה שולחת את התלמיד
+   לפתוח רשומה חדשה, וכך המידע על העריכה היה אובד לגמרי.               */
+function applyLock() {
+  const on = !!lockedAt;
+  $('afterLock').className = on ? '' : 'locked';
+  $('hypothesis').readOnly = on;
+  $('lockBtn').style.display = on ? 'none' : '';
+  $('unlockBtn').style.display = on ? '' : 'none';
+  $('lockStamp').className = 'stamp' + (wasEdited ? ' edited' : '');
+  $('lockStamp').textContent = !on ? ''
+    : (wasEdited ? 'ההשערה נערכה אחרי תחילת המדידה · ' : '') +
+      'ננעלה ' + new Date(lockedAt).toLocaleString('he-IL');
+}
+
+$('lockBtn').onclick = () => {
+  if ($('hypothesis').value.trim().length < 15) {
+    alert('כתבו השערה של ממש — מה צפוי לקרות, ולמה.'); return;
+  }
+  lockedAt = new Date().toISOString();
+  applyLock();
+};
+$('unlockBtn').onclick = () => {
+  if (!confirm('פתיחת ההשערה לעריכה תסומן בסיכום. להמשיך?')) return;
+  wasEdited = true; lockedAt = null; applyLock();
+};
+
+/* ---- ייצוא ---- */
+function buildText() {
+  const e = EXPERIMENTS[exp];
+  const ds = $('dataset').selectedOptions[0].text;
+  const strip = h => h.replace(/<[^>]+>/g, '');
+  const L = [];
+  L.push(`מחברת ניסוי — ${e.name}`);
+  L.push('='.repeat(40));
+  L.push(`תלמיד/ה: ${$('student').value || '—'}`);
+  L.push(`מאגר: ${ds}`);
+  L.push(`תאריך: ${$('date').value}`);
+  L.push('');
+  L.push('1. השאלה');
+  L.push('   ' + e.question);
+  L.push('');
+  L.push('2. השערה');
+  L.push('   ' + ($('hypothesis').value.trim() || '—').replace(/\n/g, '\n   '));
+  if (lockedAt) L.push(`   [ננעלה: ${new Date(lockedAt).toLocaleString('he-IL')}]`);
+  if (wasEdited) L.push('   [שימו לב: ההשערה נערכה אחרי שהמדידה החלה]');
+  L.push('');
+  L.push('3. תנאים');
+  L.push('   המשתנה: ' + strip(e.variable));
+  e.fixed.forEach((f, i) => {
+    const c = $('fx' + i);
+    L.push(`   [${c && c.checked ? 'V' : ' '}] ${strip(f)}`);
+  });
+  if ($('condNotes').value.trim()) L.push('   הערות: ' + $('condNotes').value.trim());
+  L.push('');
+  L.push('4. מדידה');
+  const w = 22;
+  L.push('   ' + 'תנאי'.padEnd(w) + 'דיוק     רגישות   ספציפיות');
+  e.conditions.forEach((c, i) => {
+    const r = picks[i] != null ? runs[picks[i]] : null;
+    L.push('   ' + strip(c).padEnd(w) +
+      (r ? pct(r.acc).padEnd(9) + pct(r.sens).padEnd(9) + pct(r.spec) : '—'));
+  });
+  L.push('   ' + strip($('metricBox').innerHTML));
+  L.push('');
+  L.push('5. תצפית בכלי הבדיקה');
+  L.push('   מפת קשב: ' + ($('attention').value.trim() || '—').replace(/\n/g, '\n   '));
+  L.push('   קיצור דרך: ' + ($('shortcut').value.trim() || '—').replace(/\n/g, '\n   '));
+  L.push('');
+  L.push('6. מסקנה');
+  const vd = $('verdict').selectedOptions[0];
+  L.push('   ההשערה: ' + (vd && vd.value ? vd.text : '—'));
+  L.push('   ' + ($('conclusion').value.trim() || '—').replace(/\n/g, '\n   '));
+  L.push('   מה הניסוי לא מוכיח: ' + ($('limits').value.trim() || '—'));
+  L.push('   השאלה הבאה: ' + ($('next').value.trim() || '—'));
+  return L.join('\n');
+}
+
+$('exportBtn').onclick = () => { $('out').style.display = 'block'; $('out').textContent = buildText(); };
+$('copyBtn').onclick = async () => {
+  try { await navigator.clipboard.writeText(buildText()); flash('הועתק ללוח'); }
+  catch { $('out').style.display = 'block'; $('out').textContent = buildText(); flash('העתיקו מהתיבה'); }
+};
+$('txtBtn').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buildText()], { type: 'text/plain;charset=utf-8' }));
+  a.download = `ניסוי_${EXPERIMENTS[exp].name}_${$('date').value}.txt`.replace(/[\\/:*?"<>|]/g, '-');
+  a.click();
+};
+$('printBtn').onclick = () => window.print();
+const flash = m => { $('saveStatus').textContent = m; setTimeout(() => $('saveStatus').textContent = '', 2500); };
+
+/* ---- שמירה ---- */
+const loadEntries = () => { try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) || '[]'); } catch { return []; } };
+const saveEntries = e => localStorage.setItem(ENTRIES_KEY, JSON.stringify(e));
+
+function snapshot() {
+  const fx = EXPERIMENTS[exp].fixed.map((_, i) => !!($('fx' + i) || {}).checked);
+  return { exp, dataset: $('dataset').value, datasetText: $('dataset').selectedOptions[0].text,
+    student: $('student').value, date: $('date').value,
+    hypothesis: $('hypothesis').value, lockedAt, wasEdited, fx,
+    condNotes: $('condNotes').value, picks, runs,
+    attention: $('attention').value, shortcut: $('shortcut').value,
+    verdict: $('verdict').value, conclusion: $('conclusion').value,
+    limits: $('limits').value, next: $('next').value, savedAt: new Date().toISOString() };
+}
+
+function restore(s) {
+  exp = s.exp; picks = s.picks || {}; runs = s.runs || [];
+  lockedAt = s.lockedAt; wasEdited = s.wasEdited;
+  buildChips(); renderExp();
+  $('dataset').value = s.dataset; $('student').value = s.student; $('date').value = s.date;
+  $('hypothesis').value = s.hypothesis; $('condNotes').value = s.condNotes;
+  $('attention').value = s.attention; $('shortcut').value = s.shortcut;
+  $('verdict').value = s.verdict; $('conclusion').value = s.conclusion;
+  $('limits').value = s.limits; $('next').value = s.next;
+  (s.fx || []).forEach((v, i) => { const c = $('fx' + i); if (c) c.checked = v; });
+  $('runsStatus').textContent = runs.length ? `${runs.length} הרצות (מהרשומה)` : 'טרם נטענו הרצות';
+  applyLock(); buildTable();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+$('saveBtn').onclick = () => {
+  const all = loadEntries(), s = snapshot();
+  if (editing != null) all[editing] = s; else { all.push(s); editing = all.length - 1; }
+  saveEntries(all); renderEntries(); flash('נשמר');
+};
+
+$('newBtn').onclick = () => {
+  if (!confirm('לפתוח רשומה חדשה? מה שלא נשמר יאבד.')) return;
+  editing = null; picks = {}; lockedAt = null; wasEdited = false;
+  ['student','hypothesis','condNotes','attention','shortcut','conclusion','limits','next']
+    .forEach(id => $(id).value = '');
+  $('verdict').value = '';
+  $('date').value = new Date().toLocaleDateString('he-IL');
+  renderExp(); applyLock();
+};
+
+function renderEntries() {
+  const all = loadEntries();
+  if (!all.length) {
+    $('entries').innerHTML = '<tr><td colspan="5" class="muted">אין עדיין רשומות שמורות.</td></tr>';
+    return;
+  }
+  const VT = { yes:'התאמתה', partial:'חלקית', no:'הופרכה', unclear:'לא הכריעה', '':'—' };
+  $('entries').innerHTML = all.map((s, i) => `<tr>
+      <td>${EXPERIMENTS[s.exp] ? EXPERIMENTS[s.exp].name : s.exp}</td>
+      <td>${esc(s.datasetText || '')}</td>
+      <td>${esc(s.date || '')}</td>
+      <td>${VT[s.verdict] || '—'}</td>
+      <td><button class="ghost" data-o="${i}">פתיחה</button>
+          <button class="ghost" data-d="${i}">מחיקה</button></td>
+    </tr>`).join('');
+  $('entries').querySelectorAll('[data-o]').forEach(b =>
+    b.onclick = () => { editing = +b.dataset.o; restore(loadEntries()[editing]); });
+  $('entries').querySelectorAll('[data-d]').forEach(b =>
+    b.onclick = () => {
+      if (!confirm('למחוק את הרשומה?')) return;
+      const all = loadEntries(); all.splice(+b.dataset.d, 1); saveEntries(all);
+      if (editing === +b.dataset.d) editing = null;
+      renderEntries();
+    });
+}
+
+/* ---- אתחול ---- */
+$('date').value = new Date().toLocaleDateString('he-IL');
+buildChips(); renderExp(); applyLock(); renderEntries();
+</script>
+</body>
+</html>
