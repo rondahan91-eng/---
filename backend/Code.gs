@@ -589,14 +589,45 @@ function getGeminiApiKey() {
     // תיקון שקט של רווחים/שורה חדשה שנדבקו בהעתקה
     PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', key);
   }
-  if (key.indexOf('AIza') !== 0) {
-    throw new Error('המפתח שב-GEMINI_API_KEY אינו נראה כמו מפתח Gemini API. ' +
-      'מפתח תקין מתחיל ב-"AIza" ואורכו כ-39 תווים, ואילו הערך הנוכחי מתחיל ב-"' +
-      key.slice(0, 4) + '" (' + key.length + ' תווים).\n' +
-      'ייתכן שהועתק טוקן OAuth או מזהה אחר. צרו מפתח ב-aistudio.google.com/apikey ' +
-      'תחת האפשרות "Create API key", והדביקו אותו במלואו.');
+  // כאן עמדה בדיקה שדרשה שהמפתח יתחיל ב-"AIza". גוגל מנפיקה גם מפתחות
+  // בפורמטים אחרים, ולכן הבדיקה חסמה מפתחות תקינים לחלוטין. בדיקה שמנחשת
+  // פורמט אינה יכולה להבדיל בין מפתח פסול לפורמט שלא הכרתי - הדרך היחידה
+  // לדעת אם מפתח עובד היא לקרוא איתו ל-API. לשם כך יש testGeminiKey().
+  // כאן נשארת רק בדיקה למה שבוודאות שגוי: ערך ריק או עם רווחים בתוכו.
+  if (!key) throw new Error('GEMINI_API_KEY ריק. ראו README.');
+  if (/\s/.test(key)) {
+    throw new Error('המפתח שב-GEMINI_API_KEY מכיל רווח או ירידת שורה בתוכו (' +
+      key.length + ' תווים). כנראה נדבק טקסט נוסף בהעתקה. ' +
+      'הדביקו מחדש את המפתח בלבד, והריצו testGeminiKey בעורך כדי לאמת.');
   }
   return key;
+}
+
+/**
+ * בודק את המפתח מול ה-API בפועל, ומחזיר את מה שגוגל אמרה.
+ * להרצה מתוך עורך ה-Apps Script; התוצאה נראית ב"יומן ביצוע".
+ * זו הבדיקה היחידה שיכולה באמת להיכשל - ולכן היחידה ששווה משהו.
+ */
+function testGeminiKey() {
+  const key = String(PropertiesService.getScriptProperties()
+    .getProperty('GEMINI_API_KEY') || '').trim();
+  if (!key) { Logger.log('לא הוגדר GEMINI_API_KEY.'); return; }
+  Logger.log('אורך המפתח: ' + key.length + ' תווים, מתחיל ב-"' + key.slice(0, 4) + '"');
+  Logger.log('מודל: ' + geminiModel());
+
+  const resp = UrlFetchApp.fetch(
+    GEMINI_API_BASE + geminiModel() + ':generateContent?key=' + encodeURIComponent(key), {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ contents: [{ parts: [{ text: 'אמור רק: תקין' }] }] }),
+    });
+  const code = resp.getResponseCode();
+  const text = resp.getContentText();
+  if (code === 200) {
+    Logger.log('✅ המפתח עובד. תשובת המודל: ' +
+      (JSON.parse(text).candidates || [{}])[0].content.parts[0].text);
+  } else {
+    Logger.log('❌ נדחה (HTTP ' + code + '):\n' + text.slice(0, 600));
+  }
 }
 
 function callGemini(systemPrompt, contents) {
