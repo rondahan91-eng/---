@@ -111,6 +111,8 @@
   <div class="card">
     <h2>הרצה</h2>
 
+    <div class="runbar" id="whoBox" style="margin-bottom:18px"></div>
+
     <div class="step">
       <span class="num" id="n1">1</span>
       <div style="flex:1">
@@ -835,10 +837,42 @@ function redrawCharts() {
   $('runCount').textContent = n ? `${n} הרצות שמורות` : 'אין הרצות שמורות';
 }
 
+/* ---- זהות התלמיד ------------------------------------------------------
+   כשהכלי נפתח מתוך המערכת (אותו origin) הזהות נלקחת מה-session ונעולה.
+   בהרצה עצמאית יש שדה ידני - כדי שגם בפיילוט לא ייצא אף קובץ אנונימי,
+   וכדי ששם הקובץ יהיה זהה בשני המצבים.                                 */
+const SESSION_KEY = 'ai-mentor-biorefua-session';
+const WHO_KEY = 'ai-mentor-who';
+let who = '';
+
+function initIdentity() {
+  let u = null;
+  try { u = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch {}
+  const box = $('whoBox');
+  if (u && (u.displayName || '').trim()) {
+    who = u.displayName.trim();
+    box.innerHTML = `<span class="muted">מחובר/ת כ־</span> <b>${who}</b>` +
+      `<span class="muted"> · כל ייצוא יישא את השם הזה</span>`;
+    return;
+  }
+  who = localStorage.getItem(WHO_KEY) || '';
+  box.innerHTML = `<label for="whoIn" style="margin:0">שם התלמיד/ה</label>
+    <input type="text" id="whoIn" placeholder="שם מלא" value="${who.replace(/"/g,'&quot;')}"
+           style="max-width:220px">`;
+  $('whoIn').addEventListener('input', e => {
+    who = e.target.value.trim();
+    localStorage.setItem(WHO_KEY, who);
+  });
+}
+
+const slug = s => (s || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '_');
+/** מקדים את שם התלמיד לכל הורדה, כך שקובץ לא מאבד את בעליו */
+const fname = base => (who ? slug(who) + '__' : '') + base;
+
 function downloadCanvas(id, name) {
   const a = document.createElement('a');
   a.href = $(id).toDataURL('image/png');
-  a.download = name + '.png';
+  a.download = fname(name) + '.png';
   a.click();
 }
 
@@ -871,7 +905,7 @@ $('runsCsvBtn').addEventListener('click', () => {
       (r.acc*100).toFixed(1), r.sens==null?'':(r.sens*100).toFixed(1),
       r.spec==null?'':(r.spec*100).toFixed(1), r.TP, r.FN, r.FP, r.TN, r.at]);
   }
-  downloadText('runs_comparison.csv', '﻿' + rows.map(r => r.join(',')).join('\n'));
+  downloadText(fname('runs_comparison.csv'), '﻿' + rows.map(r => r.join(',')).join('\n'));
 });
 
 function downloadText(name, text) {
@@ -900,9 +934,11 @@ $('csvBtn').addEventListener('click', () => {
   const csv = '﻿' + rows.map(r => r.join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-  a.download = 'evaluation_results.csv';
+  a.download = fname('evaluation_results.csv');
   a.click();
 });
+
+initIdentity();
 </script>
 </body>
 </html>

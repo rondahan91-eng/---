@@ -106,6 +106,7 @@
       <div>
         <label>שם התלמיד/ה</label>
         <input type="text" id="student" placeholder="שם מלא">
+        <div class="muted" id="whoNote" style="font-size:11.5px;margin-top:4px"></div>
       </div>
       <div>
         <label>תאריך</label>
@@ -535,7 +536,9 @@ $('copyBtn').onclick = async () => {
 $('txtBtn').onclick = () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buildText()], { type: 'text/plain;charset=utf-8' }));
-  a.download = `ניסוי_${EXPERIMENTS[exp].name}_${$('date').value}.txt`.replace(/[\\/:*?"<>|]/g, '-');
+  const who = slug($('student').value);
+  a.download = `${who ? who + '__' : ''}ניסוי_${slug(EXPERIMENTS[exp].name)}_${$('date').value}.txt`
+    .replace(/[\\/:*?"<>|]/g, '-');
   a.click();
 };
 $('printBtn').onclick = () => window.print();
@@ -613,9 +616,33 @@ function renderEntries() {
     });
 }
 
+/* ---- זהות התלמיד ------------------------------------------------------
+   כשהמחברת נפתחת מתוך המערכת (אותו origin) השם נלקח מה-session ונעול, כך
+   שרשומה לא יכולה להיות מיוחסת לתלמיד אחר. בהרצה עצמאית - שדה ידני שנזכר,
+   כדי שגם בפיילוט אף קובץ לא ייצא בלי בעלים.                           */
+const SESSION_KEY = 'ai-mentor-biorefua-session';
+const WHO_KEY = 'ai-mentor-who';
+
+function initIdentity() {
+  let u = null;
+  try { u = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch {}
+  if (u && (u.displayName || '').trim()) {
+    $('student').value = u.displayName.trim();
+    $('student').readOnly = true;
+    $('whoNote').textContent = 'נלקח מהחיבור למערכת';
+    return;
+  }
+  const saved = localStorage.getItem(WHO_KEY) || '';
+  if (saved && !$('student').value) $('student').value = saved;
+  $('student').addEventListener('input', e =>
+    localStorage.setItem(WHO_KEY, e.target.value.trim()));
+}
+
+const slug = s => (s || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '_');
+
 /* ---- אתחול ---- */
 $('date').value = new Date().toLocaleDateString('he-IL');
-buildChips(); renderExp(); applyLock(); renderEntries();
+buildChips(); renderExp(); applyLock(); renderEntries(); initIdentity();
 </script>
 </body>
 </html>
