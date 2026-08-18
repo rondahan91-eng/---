@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>כלי הפרעות · AI Mentor</title>
+<style>
+  :root{
+    --bg:#eef3f7; --surface:#fff; --surface2:#f7fafc; --line:#e0e9f0; --line2:#ccdae5;
+    --ink:#0d1f2b; --ink2:#4a6478; --ink3:#8aa2b3;
+    --brand:#0891b2; --brand2:#0e7490; --brand-soft:#e6fafd;
+    --ok:#059669; --ok-soft:#e9fbf3; --warn:#b45309; --warn-soft:#fff8ec;
+    --err:#dc2626; --err-soft:#fef2f2;
+    --r:14px; --sh:0 2px 10px rgba(13,31,43,.07);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:'Segoe UI','Assistant',Arial,sans-serif;line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .lede{color:var(--ink2);font-size:14px;margin:0 0 22px}
+  .card{background:var(--surface);border:1px solid var(--line);
+        border-radius:var(--r);box-shadow:var(--sh);padding:20px;margin-bottom:18px}
+  .card h2{font-size:15px;margin:0 0 12px}
+  .step{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+  .num{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;
+       display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:2px}
+  .num.done{background:var(--ok)}
+  label.pick{display:block;font-size:13px;color:var(--ink2);margin-bottom:6px;font-weight:600}
+  input[type=file]{font:inherit;font-size:13px;background:var(--bg);border:1px solid var(--line2);
+                   border-radius:9px;padding:9px 11px;width:100%;max-width:520px}
+  input[type=text]{font:inherit;font-size:13.5px;border:1px solid var(--line2);
+                   border-radius:9px;padding:8px 11px;max-width:220px}
+  select{font:inherit;font-size:13.5px;border:1px solid var(--line2);border-radius:9px;padding:7px 10px}
+  button{font:inherit;font-weight:600;font-size:14.5px;cursor:pointer;border:none;
+         border-radius:10px;background:var(--brand2);color:#fff;padding:11px 22px}
+  button:hover{background:var(--brand)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.small{padding:6px 13px;font-size:12.5px;background:var(--surface);
+               color:var(--ink2);border:1px solid var(--line2)}
+  button.small:hover{background:var(--brand-soft);color:var(--brand2);border-color:var(--brand)}
+  .hint{font-size:12.5px;color:var(--ink3);margin-top:6px}
+  .status{font-size:13.5px;color:var(--ink2);margin-top:12px;min-height:20px}
+  .err{color:var(--err);background:var(--err-soft);border:1px solid #fecaca;
+       border-radius:9px;padding:9px 12px;font-size:13px;margin-top:10px}
+  .note{background:var(--brand-soft);border:1px solid #b8ecf5;border-radius:10px;
+        padding:11px 14px;font-size:12.5px;color:var(--brand2);margin-top:14px}
+  .note.warn{background:var(--warn-soft);border-color:#f5dcb3;color:var(--warn)}
+  .note.ok{background:var(--ok-soft);border-color:#bfe9d6;color:var(--ok)}
+  .note b{color:inherit}
+  .runbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:16px;
+       padding:12px 14px;background:var(--surface2);border:1px solid var(--line);border-radius:12px}
+  .runbar .count{font-size:12.5px;color:var(--ink2);margin-inline-start:auto}
+
+  /* ---- בחירת הפרעות ---- */
+  .plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+  .pitem{border:1px solid var(--line2);border-radius:11px;padding:10px 12px;background:var(--surface2)}
+  .pitem.pair{border-color:var(--brand);background:var(--brand-soft)}
+  .pitem label{display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:13.5px;font-weight:600}
+  .pitem input{margin-top:4px;flex-shrink:0}
+  .pitem .why{font-size:11.5px;color:var(--ink2);font-weight:400;margin-top:4px;line-height:1.55}
+
+  /* ---- תוצאות ---- */
+  #results{display:none}
+  table.res{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.res th{text-align:right;font-size:12px;color:var(--ink2);font-weight:600;
+               background:var(--surface2);padding:8px 10px;border-bottom:1.5px solid var(--line)}
+  table.res td{padding:8px 10px;border-bottom:1px solid var(--line);
+               font-variant-numeric:tabular-nums}
+  table.res tbody tr{cursor:pointer}
+  table.res tbody tr:hover{background:var(--brand-soft)}
+  table.res tr.base td{background:var(--surface2);font-weight:700}
+  table.res tr.sel td{background:var(--brand-soft)}
+  .dd{font-weight:700}
+  .dd.bad{color:var(--err)} .dd.mid{color:var(--warn)} .dd.good{color:var(--ok)}
+
+  .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px}
+  figure.chart{margin:0;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface)}
+  figure.chart canvas{width:100%;height:auto;display:block}
+  figure.chart figcaption{font-size:12px;color:var(--ink2);margin-top:8px;line-height:1.6}
+  figure.chart .dl{margin-top:8px}
+
+  .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:14px}
+  .gitem{border:1px solid var(--line2);border-radius:11px;padding:9px;background:var(--surface)}
+  .gpair{display:flex;gap:6px}
+  .gpair canvas{width:50%;height:auto;border-radius:6px;background:#000;display:block}
+  .gcap{font-size:11px;color:var(--ink2);margin-top:6px;line-height:1.5;
+        font-family:Consolas,monospace;word-break:break-all}
+  .flip{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10.5px;font-weight:700}
+  .flip.yes{background:var(--err-soft);color:var(--err);border:1px solid #fecaca}
+  .flip.no{background:var(--ok-soft);color:var(--ok);border:1px solid #bfe9d6}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>כלי הפרעות</h1>
+  <p class="lede">
+    מפת קשב מראה <b>איפה</b> המודל הסתכל. כלי ההפרעות בודק <b>האם זה באמת מה שקובע</b>:
+    הוא משנה את התמונה בדרכים שלא משנות את האבחנה הרפואית, ומודד כמה ההחלטה זזה.
+    מודל שלמד את הממצא אמור לעמוד בזה. מודל שלמד קיצור דרך — יתמוטט.
+  </p>
+
+  <div class="card">
+    <h2>הרצה</h2>
+    <div class="runbar" id="whoBox"></div>
+
+    <div class="step">
+      <span class="num" id="n1">1</span>
+      <div style="flex:1">
+        <label class="pick">תיקיית המודל שיוצא מ-Teachable Machine</label>
+        <input type="file" id="modelFiles" webkitdirectory directory multiple>
+        <div class="hint">אותה תיקייה שהרצתם בכלי ההערכה (model.json, weights.bin, metadata.json).</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="num" id="n2">2</span>
+      <div style="flex:1">
+        <label class="pick">תיקיית ערכת המבחן</label>
+        <input type="file" id="benchFiles" webkitdirectory directory multiple>
+        <div class="hint">אותה ערכת <b>benchmark</b> — אחרת ההשוואה לבסיס חסרת משמעות.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="num" id="n3">3</span>
+      <div style="flex:1">
+        <label class="pick">אילו הפרעות להריץ</label>
+        <div class="plist" id="plist"></div>
+        <div class="note">
+          <b>הזוג המסומן הוא הכלי החד ביותר כאן.</b> חיתוך מרכזי מסיר את המסגרת
+          ומשאיר את הביולוגיה; מיסוך מרכזי עושה בדיוק ההפך. הרצת שניהם על אותה
+          ערכה מכריעה מה מהם נושא את ההחלטה — וזו בדיוק השאלה שמפת קשב לבדה
+          לא יכולה לענות.
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="num" id="n4">4</span>
+      <div style="flex:1">
+        <label class="pick">כמה תמונות לבדוק</label>
+        <select id="sampleN">
+          <option value="40">40 תמונות — מהיר</option>
+          <option value="80" selected>80 תמונות — מומלץ</option>
+          <option value="0">הכול — איטי</option>
+        </select>
+        <div class="hint">הדגימה מאוזנת בין המחלקות ונשארת קבועה בין ההפרעות.</div>
+        <div style="margin-top:14px">
+          <button id="runBtn" disabled>הרצת ההפרעות</button>
+        </div>
+        <div class="status" id="status"></div>
+        <div id="errBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="results">
+    <div class="card">
+      <h2>מה קרה לכל הפרעה</h2>
+      <div id="verdict"></div>
+      <table class="res" style="margin-top:14px">
+        <thead><tr>
+          <th>הפרעה</th><th>דיוק</th><th>שינוי</th><th>היפוכים</th>
+          <th>Δ ציון ממוצע</th><th></th>
+        </tr></thead>
+        <tbody id="rTable"></tbody>
+      </table>
+      <div class="hint" style="margin-top:10px">
+        לחיצה על שורה מציגה את התמונות שלה למטה.
+        <b>היפוך</b> = תמונה שהמודל סיווג אחרת אחרי ההפרעה.
+      </div>
+      <div style="margin-top:14px;display:flex;gap:9px;flex-wrap:wrap">
+        <button id="csvBtn" class="small">ייצוא הטבלה ל-CSV</button>
+        <button id="csvImgBtn" class="small">ייצוא לכל תמונה ל-CSV</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>גרפים</h2>
+      <div class="chart-grid">
+        <figure class="chart">
+          <canvas id="chAcc" width="620" height="380"></canvas>
+          <figcaption>דיוק לכל הפרעה מול קו הבסיס. עמודה שצונחת מתחת לקו מסמנת
+            תלות במשהו שההפרעה הסירה.</figcaption>
+          <button class="small dl" data-dl="chAcc" data-name="perturb_accuracy">הורדת התרשים</button>
+        </figure>
+        <figure class="chart">
+          <canvas id="chFlip" width="620" height="380"></canvas>
+          <figcaption>אחוז התמונות שהחליפו סיווג. מדד רגיש יותר מדיוק —
+            הוא סופר גם היפוכים שמתקזזים.</figcaption>
+          <button class="small dl" data-dl="chFlip" data-name="perturb_flips">הורדת התרשים</button>
+        </figure>
+        <figure class="chart">
+          <canvas id="chDir" width="620" height="380"></canvas>
+          <figcaption>כיוון ההיפוכים בהפרעה הנבחרת. אם כולם לכיוון אחד,
+            ההפרעה מטה את המודל ולא רק מבלבלת אותו.</figcaption>
+          <button class="small dl" data-dl="chDir" data-name="perturb_direction">הורדת התרשים</button>
+        </figure>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="galTitle">התמונות</h2>
+      <div class="runbar" style="margin-bottom:12px">
+        <span style="font-size:13px;color:var(--ink2)">להציג:</span>
+        <select id="galFilter">
+          <option value="flip">רק היפוכים</option>
+          <option value="all">הכול</option>
+        </select>
+        <button id="dlAllBtn" class="small">הורדת כל המוצגות כ-PNG</button>
+        <span class="count" id="galCount"></span>
+      </div>
+      <div class="gal" id="gal"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const SIZE = 224;
+
+/* אותו אוצר מילים בדיוק כמו בכלי ההערכה. שתי רשימות נפרדות כבר גרמו פעם
+   להיפוך מלא של התוצאות, כשמחלקה הופיעה רק באחת מהן.                    */
+const LABEL_RULES = [
+  [/uninfected|unaffected/, 'normal'],
+  [/abnormal/,              'abnormal'],
+  [/^normal|[^b]normal/,    'normal'],
+  [/pneumonia|parasitized|positive|tumou?r|malignant|diseased|sick|fracture|חריג|חיובי/, 'abnormal'],
+  [/negative|healthy|benign|תקין|שלילי/, 'normal'],
+];
+const labelFromFolder = n => {
+  n = (n || '').toLowerCase();
+  for (const [re, l] of LABEL_RULES) if (re.test(n)) return l;
+  return null;
+};
+
+/* ---- ההפרעות ----------------------------------------------------------
+   כל הפרעה מגיעה עם הפירוש שלה. הפרעה בלי פירוש היא רק מספר שירד, והתלמיד
+   לא ידע אם זו בעיה או תכונה של הבדיקה.                                 */
+const PERTURBS = {
+  flip:    { name: 'מראה אופקית', pair:false,
+             why: 'הממצא הרפואי זהה במראה. ירידה מסמנת שהמודל למד מיקום, לא ממצא.',
+             draw: (c,i)=>{ c.translate(SIZE,0); c.scale(-1,1); c.drawImage(i,0,0,SIZE,SIZE); } },
+  rot90:   { name: 'סיבוב 90°', pair:false,
+             why: 'טפיל נשאר טפיל בכל זווית. צילום רפואי — פחות, כי יש לו אוריינטציה קבועה.',
+             draw: (c,i)=>{ c.translate(SIZE/2,SIZE/2); c.rotate(Math.PI/2);
+                            c.drawImage(i,-SIZE/2,-SIZE/2,SIZE,SIZE); } },
+  rot180:  { name: 'סיבוב 180°', pair:false,
+             why: 'היפוך מלא. שומר על כל התוכן ומשנה רק את הכיוון.',
+             draw: (c,i)=>{ c.translate(SIZE/2,SIZE/2); c.rotate(Math.PI);
+                            c.drawImage(i,-SIZE/2,-SIZE/2,SIZE,SIZE); } },
+  bright:  { name: 'בהירות +40%', pair:false,
+             why: 'מעבדות צובעות אחרת ומכשירים חושפים אחרת. מודל שנופל כאן למד את המעבדה.',
+             draw: (c,i)=>{ c.filter='brightness(1.4)'; c.drawImage(i,0,0,SIZE,SIZE); } },
+  dark:    { name: 'בהירות −35%', pair:false,
+             why: 'אותו מבחן בכיוון ההפוך.',
+             draw: (c,i)=>{ c.filter='brightness(0.65)'; c.drawImage(i,0,0,SIZE,SIZE); } },
+  contrast:{ name: 'ניגודיות −40%', pair:false,
+             why: 'מחליש את ההבדלים בלי לשנות את המבנה.',
+             draw: (c,i)=>{ c.filter='contrast(0.6)'; c.drawImage(i,0,0,SIZE,SIZE); } },
+  noise:   { name: 'רעש', pair:false,
+             why: 'איכות צילום ירודה. בודק עמידות, לא קיצורי דרך.',
+             draw: (c,i)=>{ c.drawImage(i,0,0,SIZE,SIZE);
+               const d=c.getImageData(0,0,SIZE,SIZE);
+               for(let k=0;k<d.data.length;k+=4){ const n=(Math.random()-0.5)*70;
+                 d.data[k]+=n; d.data[k+1]+=n; d.data[k+2]+=n; }
+               c.putImageData(d,0,0); } },
+  border:  { name: 'מיסוך המסגרת', pair:true,
+             why: 'מאפיר את כל מה שמחוץ ל-60% המרכזיים ומשאיר את המרכז ' +
+                  'בגודלו המקורי. מסיר את המסגרת בלי לשנות שום דבר אחר.',
+             draw: (c,i)=>{ const m=SIZE*0.2;
+               c.fillStyle='#808080'; c.fillRect(0,0,SIZE,SIZE);
+               c.drawImage(i, m,m, SIZE-2*m, SIZE-2*m, m,m, SIZE-2*m, SIZE-2*m); } },
+  crop:    { name: 'חיתוך מרכזי 60%', pair:false,
+             why: 'שומר את המרכז ומותח אותו למסך מלא. שימו לב: הוא גם מגדיל ' +
+                  'פי 1.67, ולכן ירידה כאן עלולה לנבוע מהזום ולא מהסרת המסגרת. ' +
+                  'לשאלת המסגרת עדיף "מיסוך המסגרת", שאין בו זום.',
+             draw: (c,i)=>{ const m=SIZE*0.2;
+               c.drawImage(i, m,m, SIZE-2*m, SIZE-2*m, 0,0, SIZE,SIZE); } },
+  mask:    { name: 'מיסוך המרכז 60%', pair:true,
+             why: 'ההפך המדויק: מסיר את הביולוגיה ומשאיר רק מסגרת ורקע. ' +
+                  'אם הדיוק נשאר גבוה — המודל כלל לא היה צריך את התא.',
+             draw: (c,i)=>{ c.drawImage(i,0,0,SIZE,SIZE);
+               c.fillStyle='#808080'; const m=SIZE*0.2;
+               c.fillRect(m,m,SIZE-2*m,SIZE-2*m); } },
+  swap:    { name: 'החלפת חצי תחתון', pair:false,
+             why: 'החצי התחתון מוחלף בזה של תמונה אחרת. אם התחזית לא זזה — ' +
+                  'ההחלטה נשענת על החצי העליון בלבד.',
+             draw: (c,i,other)=>{ c.drawImage(i,0,0,SIZE,SIZE);
+               if(other) c.drawImage(other, 0,SIZE/2,SIZE,SIZE/2, 0,SIZE/2,SIZE,SIZE/2); } },
+};
+
+let modelFileMap=null, benchList=[], model=null, abnormalIdx=1, classNames=[];
+let sample=[], results=[], selected=null;
+
+const setStatus = t => $('status').textContent = t;
+const showError = t => $('errBox').innerHTML = '<div class="err">'+t+'</div>';
+const clearError = () => $('errBox').innerHTML='';
+const pct = v => v==null ? '—' : (v*100).toFixed(1)+'%';
+
+/* ---- זהות ---- */
+const SESSION_KEY='ai-mentor-biorefua-session', WHO_KEY='ai-mentor-who';
+let who='';
+function initIdentity(){
+  let u=null; try{ u=JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null'); }catch{}
+  if(u && (u.displayName||'').trim()){
+    who=u.displayName.trim();
+    $('whoBox').innerHTML=`<span style="color:var(--ink3)">מחובר/ת כ־</span> <b>${who}</b>`;
+    return;
+  }
+  who = localStorage.getItem(WHO_KEY)||'';
+  $('whoBox').innerHTML=`<label class="pick" for="whoIn" style="margin:0">שם התלמיד/ה</label>
+    <input type="text" id="whoIn" placeholder="שם מלא" value="${who.replace(/"/g,'&quot;')}">`;
+  $('whoIn').addEventListener('input', e=>{ who=e.target.value.trim();
+    localStorage.setItem(WHO_KEY, who); });
+}
+const slug = s => (s||'').trim().replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,'_');
+const fname = b => (who ? slug(who)+'__' : '') + b;
+
+/* ---- בחירת הפרעות ---- */
+$('plist').innerHTML = Object.entries(PERTURBS).map(([k,p])=>`
+  <div class="pitem${p.pair?' pair':''}">
+    <label><input type="checkbox" data-p="${k}" ${p.pair||k==='flip'||k==='bright'?'checked':''}>
+      <span>${p.name}<span class="why">${p.why}</span></span></label>
+  </div>`).join('');
+
+/* ---- קלט ---- */
+$('modelFiles').addEventListener('change', e=>{
+  clearError();
+  const map={}; for(const f of e.target.files) map[f.name.toLowerCase()]=f;
+  if(!map['model.json']||!map['metadata.json']){
+    modelFileMap=null;
+    showError('לא נמצאו model.json ו-metadata.json. ודאו שייצאתם בלשונית Tensorflow.js.');
+  } else { modelFileMap=map; $('n1').classList.add('done'); }
+  ready();
+});
+
+$('benchFiles').addEventListener('change', e=>{
+  clearError(); benchList=[];
+  const skipped=[];
+  for(const f of e.target.files){
+    if(!/\.(png|jpe?g)$/i.test(f.name)) continue;
+    const parts=(f.webkitRelativePath||f.name).split('/');
+    const truth=labelFromFolder(parts[parts.length-2]||'');
+    if(!truth){ skipped.push(parts[parts.length-2]); continue; }
+    benchList.push({name:parts[parts.length-1], truth, file:f});
+  }
+  if(skipped.length){
+    const u=[...new Set(skipped)];
+    showError(`תיקיות שלא זוהו ולכן דולגו: ${u.join(', ')}. ` +
+      'שמות מוכרים: normal / abnormal / Parasitized / Uninfected / NORMAL / PNEUMONIA.');
+  }
+  if(benchList.length) $('n2').classList.add('done');
+  setStatus(benchList.length ? `${benchList.length} תמונות נטענו.` : '');
+  ready();
+});
+
+const ready = () => $('runBtn').disabled = !(modelFileMap && benchList.length);
+
+/* ---- דגימה מאוזנת וקבועה ---- */
+function makeSample(n){
+  const by={abnormal:[],normal:[]};
+  benchList.forEach(b=>by[b.truth].push(b));
+  if(!n) return [...by.abnormal, ...by.normal];
+  const per=Math.floor(n/2);
+  return [...by.abnormal.slice(0,per), ...by.normal.slice(0,per)];
+}
+
+/* ---- הכנת התמונה ------------------------------------------------------
+   Teachable Machine חותך את התמונה לריבוע מרכזי לפני ההקטנה ל-224. מתיחה
+   פשוטה ל-224x224 מוציאה תמונה לא-ריבועית מההתפלגות שעליה המודל אומן, עד
+   כדי היפוך התחזית: נמדד 0.021 מול 1.000 על אותה תמונה ביחס 1.66.
+   לכן כל תמונה עוברת פעם אחת דרך squareCanvas, וכל ההפרעות מציירות ממנה. */
+function squareCanvas(img){
+  const c=document.createElement('canvas'); c.width=c.height=SIZE;
+  const s=Math.min(img.naturalWidth, img.naturalHeight);
+  c.getContext('2d').drawImage(img,
+    (img.naturalWidth-s)/2, (img.naturalHeight-s)/2, s, s, 0,0, SIZE,SIZE);
+  return c;
+}
+
+function perturbCanvas(key, base, other){
+  const c=document.createElement('canvas'); c.width=c.height=SIZE;
+  const x=c.getContext('2d',{willReadFrequently:true});
+  x.save(); PERTURBS[key].draw(x, base, other); x.restore();
+  return c;
+}
+const fileToImage = f => new Promise((res,rej)=>{
+  const i=new Image(); i.onload=()=>res(i);
+  i.onerror=()=>rej(new Error('לא ניתן לקרוא את '+f.name));
+  i.src=URL.createObjectURL(f);
+});
+
+/* ---- הרצה ---- */
+$('runBtn').addEventListener('click', async ()=>{
+  clearError(); $('runBtn').disabled=true;
+  try{
+    setStatus('טוען את המודל...');
+    const w=Object.values(modelFileMap).filter(f=>/\.bin$/i.test(f.name));
+    model=await tmImage.loadFromFiles(modelFileMap['model.json'], ...w, modelFileMap['metadata.json']);
+    classNames=model.getClassLabels();
+    let idx=classNames.findIndex(c=>labelFromFolder(c)==='abnormal');
+    if(idx===-1){ const n=classNames.findIndex(c=>labelFromFolder(c)==='normal');
+      idx = n===-1 ? 1 : (n===0?1:0); }
+    abnormalIdx=idx;
+
+    const keys=[...$('plist').querySelectorAll('input:checked')].map(i=>i.dataset.p);
+    if(!keys.length){ showError('בחרו לפחות הפרעה אחת.'); return; }
+
+    sample=makeSample(+$('sampleN').value);
+    setStatus(`טוען ${sample.length} תמונות...`);
+    for(const s of sample){
+      if(!s.img) s.img=await fileToImage(s.file);
+      s.cv = squareCanvas(s.img);      // מקור אחיד לבסיס, להפרעות ולגלריה
+    }
+
+    // בסיס
+    setStatus('מודד בסיס...');
+    for(let i=0;i<sample.length;i++){
+      sample[i].base=(await model.predict(sample[i].cv))[abnormalIdx].probability;
+      if(i%10===0) setStatus(`בסיס... ${i+1}/${sample.length}`);
+    }
+    results=[{key:'base', name:'ללא הפרעה (בסיס)', items:sample.map(s=>({
+      name:s.name, truth:s.truth, before:s.base, after:s.base, ref:s}))}];
+
+    // הפרעות
+    for(const k of keys){
+      const items=[];
+      for(let i=0;i<sample.length;i++){
+        const s=sample[i];
+        const other = k==='swap' ? sample[(i+7)%sample.length].cv : null;
+        const c=perturbCanvas(k, s.cv, other);
+        const after=(await model.predict(c))[abnormalIdx].probability;
+        items.push({name:s.name, truth:s.truth, before:s.base, after, ref:s, other});
+        if(i%10===0) setStatus(`${PERTURBS[k].name}... ${i+1}/${sample.length}`);
+      }
+      results.push({key:k, name:PERTURBS[k].name, items});
+    }
+    results.forEach(computeStats);
+    setStatus(`הושלם: ${sample.length} תמונות × ${keys.length+1} תנאים.`);
+    $('n4').classList.add('done');
+    $('results').style.display='block';
+    selected = results[1] ? results[1].key : 'base';
+    renderAll();
+  }catch(err){ showError('שגיאה: '+err.message); setStatus(''); }
+  finally{ $('runBtn').disabled=false; }
+});
+
+function computeStats(r){
+  let TP=0,FN=0,FP=0,TN=0, flips=0, up=0, down=0, sum=0;
+  for(const it of r.items){
+    const pa = it.after>=0.5 ? 'abnormal':'normal';
+    const pb = it.before>=0.5 ? 'abnormal':'normal';
+    if(it.truth==='abnormal') pa==='abnormal'?TP++:FN++;
+    else pa==='abnormal'?FP++:TN++;
+    if(pa!==pb){ flips++; it.flipped=true; pa==='abnormal'?up++:down++; } else it.flipped=false;
+    sum += Math.abs(it.after-it.before);
+  }
+  const n=r.items.length;
+  Object.assign(r, {TP,FN,FP,TN,flips,up,down,
+    acc:n?(TP+TN)/n:0, flipRate:n?flips/n:0, meanDelta:n?sum/n:0,
+    sens:(TP+FN)?TP/(TP+FN):null, spec:(TN+FP)?TN/(TN+FP):null});
+}
+
+/* ---- פסק דין על זוג חיתוך/מיסוך ---------------------------------------
+   השאלה "האם המודל למד את הממצא או את המסגרת" לא נענית ממפת קשב, כי מפה
+   מראה מיקום ולא סיבתיות. הזוג הזה עונה עליה ישירות.                    */
+function renderVerdict(){
+  const base=results.find(r=>r.key==='base');
+  const ctr =results.find(r=>r.key==='border');   // רק המרכז, בלי זום
+  const brd =results.find(r=>r.key==='mask');     // רק המסגרת
+  if(!base||!ctr||!brd){
+    $('verdict').innerHTML='<div class="note">להכרעת שאלת המסגרת סמנו את שתי ' +
+      'ההפרעות המסומנות: <b>מיסוך המסגרת</b> ו<b>מיסוך המרכז</b>. ' +
+      'כל אחת לבדה אינה מספיקה — הן עונות יחד.</div>';
+    return;
+  }
+  // רצפת הניחוש נגזרת מהרכב הערכה, לא מהנחה שהיא מאוזנת
+  const n=base.items.length;
+  const maj=Math.max(base.items.filter(i=>i.truth==='abnormal').length,
+                     base.items.filter(i=>i.truth==='normal').length)/n;
+  const c=ctr.acc, b=brd.acc, near=maj+0.08;
+
+  let cls='note', txt;
+  if(b>=near && c<b){
+    cls='note warn';
+    txt=`<b>המסגרת לבדה מגיעה ל-${pct(b)}, יותר מהמרכז לבדו (${pct(c)}).</b> ` +
+        `רצפת הניחוש כאן היא ${pct(maj)}. כלומר האזור שמחוץ לממצא מכיל את רוב ` +
+        'המידע — קיצור דרך של ממש, והציון הגבוה אינו עדות לזיהוי רפואי.';
+  } else if(b>=near){
+    cls='note warn';
+    txt=`<b>שני החלקים נושאים מידע:</b> המרכז לבדו ${pct(c)}, המסגרת לבדה ${pct(b)}, ` +
+        `מול רצפת ניחוש של ${pct(maj)}. המודל משלב ממצא אמיתי עם רמז מהרקע, ` +
+        'ולכן הוא עלול להיכשל על מקור אחר שבו הרמז שונה. זה בדיוק מה שניסוי ' +
+        'ההכללה בין מקורות אמור לבדוק.';
+  } else if(c>=base.acc-0.05){
+    cls='note ok';
+    txt=`<b>המרכז לבדו שומר על ${pct(c)} מתוך ${pct(base.acc)}, והמסגרת לבדה נופלת ל-${pct(b)} ` +
+        `— קרוב לרצפת הניחוש (${pct(maj)}).</b> ההחלטה נשענת על הממצא. אם מפת הקשב ` +
+        'הצביעה על "מסגרת", סביר שהכוונה לקרום התא ולא לגבול התמונה.';
+  } else {
+    txt=`המרכז לבדו: ${pct(c)}. המסגרת לבדה: ${pct(b)}. בסיס: ${pct(base.acc)}. ` +
+        'שני החלקים נפגעים, ואף אחד אינו מספיק לבדו — ההחלטה מבוזרת על פני ' +
+        'התמונה. הריצו על יותר תמונות ובדקו מקרים בגלריה.';
+  }
+  $('verdict').innerHTML=`<div class="${cls}"><b>שאלת המסגרת:</b> ${txt}</div>` +
+    `<div class="hint" style="margin-top:8px">הפסק מבוסס על <b>מיסוך</b> בלבד — ` +
+    `שתי ההפרעות משאירות את קנה המידה על כנו. "חיתוך מרכזי" מגדיל פי 1.67 ` +
+    `ולכן אינו נכנס לחישוב.</div>`;
+}
+
+/* ---- טבלה ---- */
+function renderTable(){
+  const base=results.find(r=>r.key==='base');
+  $('rTable').innerHTML=results.map(r=>{
+    const d=r.acc-base.acc;
+    const cls = r.key==='base' ? '' : (d<=-0.10?'bad':d<=-0.03?'mid':'good');
+    return `<tr data-k="${r.key}" class="${r.key==='base'?'base':''}${r.key===selected?' sel':''}">
+      <td>${r.name}</td>
+      <td>${pct(r.acc)}</td>
+      <td class="dd ${cls}">${r.key==='base'?'—':(d>=0?'+':'')+(d*100).toFixed(1)}</td>
+      <td>${r.key==='base'?'—':r.flips+' ('+pct(r.flipRate)+')'}</td>
+      <td>${r.key==='base'?'—':r.meanDelta.toFixed(3)}</td>
+      <td><button class="small">הצגה</button></td></tr>`;
+  }).join('');
+  $('rTable').querySelectorAll('tr').forEach(tr=>tr.onclick=()=>{
+    selected=tr.dataset.k; renderAll();
+  });
+}
+
+/* ---- גרפים ---- */
+const CH={ink:'#0d1f2b',ink2:'#4a6478',ink3:'#8aa2b3',line:'#e0e9f0',
+          ab:'#0891b2',no:'#94a3b8',warn:'#b45309',err:'#dc2626',ok:'#059669'};
+
+function frame(c,W,H,title){
+  c.clearRect(0,0,W,H); c.fillStyle='#fff'; c.fillRect(0,0,W,H);
+  c.fillStyle=CH.ink; c.font='bold 15px Segoe UI, Arial'; c.textAlign='right';
+  c.direction='rtl'; c.fillText(title, W-16, 26);
+}
+
+function bars(id,title,vals,labels,colors,refLine,fmt){
+  const cv=$(id), c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  frame(c,W,H,title);
+  const m={t:48,b:76,l:52,r:16}, gw=W-m.l-m.r, gh=H-m.t-m.b;
+  const max=Math.max(0.001,...vals,refLine||0)*1.15;
+  c.strokeStyle=CH.line; c.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=m.t+gh-gh*i/4;
+    c.beginPath(); c.moveTo(m.l,y); c.lineTo(W-m.r,y); c.stroke();
+    c.fillStyle=CH.ink3; c.font='11px Segoe UI, Arial'; c.textAlign='right';
+    c.fillText(fmt(max*i/4), m.l-6, y+4);
+  }
+  const bw=gw/vals.length;
+  vals.forEach((v,i)=>{
+    const h=gh*v/max, x=m.l+i*bw+bw*0.18, y=m.t+gh-h;
+    c.fillStyle=colors[i]; c.fillRect(x,y,bw*0.64,h);
+    c.fillStyle=CH.ink2; c.font='bold 11px Segoe UI, Arial'; c.textAlign='center';
+    c.fillText(fmt(v), x+bw*0.32, y-5);
+  });
+  if(refLine!=null){
+    const y=m.t+gh-gh*refLine/max;
+    c.strokeStyle=CH.err; c.setLineDash([5,4]); c.lineWidth=1.5;
+    c.beginPath(); c.moveTo(m.l,y); c.lineTo(W-m.r,y); c.stroke(); c.setLineDash([]);
+    c.fillStyle=CH.err; c.font='11px Segoe UI, Arial'; c.textAlign='left';
+    c.fillText('בסיס '+fmt(refLine), m.l+4, y-5);
+  }
+  c.save(); c.translate(0,0); c.textAlign='right'; c.direction='rtl';
+  labels.forEach((l,i)=>{
+    const x=m.l+i*bw+bw/2;
+    c.save(); c.translate(x,m.t+gh+10); c.rotate(-Math.PI/4);
+    c.fillStyle=CH.ink2; c.font='11px Segoe UI, Arial'; c.fillText(l,0,0); c.restore();
+  });
+  c.restore();
+}
+
+function pie(id,title,parts){
+  const cv=$(id), c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  frame(c,W,H,title);
+  const tot=parts.reduce((s,p)=>s+p.v,0);
+  const cx=W/2, cy=H/2+16, R=Math.min(W,H)*0.27;
+  if(!tot){
+    c.fillStyle=CH.ok; c.font='15px Segoe UI, Arial'; c.textAlign='center';
+    c.fillText('אף תמונה לא החליפה סיווג', cx, cy); return;
+  }
+  let a=-Math.PI/2;
+  parts.forEach(p=>{
+    if(!p.v) return;
+    const s=p.v/tot*Math.PI*2;
+    c.fillStyle=p.c; c.beginPath(); c.moveTo(cx,cy);
+    c.arc(cx,cy,R,a,a+s); c.closePath(); c.fill();
+    const mid=a+s/2;
+    c.fillStyle='#fff'; c.font='bold 14px Segoe UI, Arial'; c.textAlign='center';
+    c.fillText(Math.round(p.v/tot*100)+'%', cx+Math.cos(mid)*R*0.62, cy+Math.sin(mid)*R*0.62+5);
+    a+=s;
+  });
+  c.textAlign='right'; c.direction='rtl'; c.font='12px Segoe UI, Arial';
+  parts.forEach((p,i)=>{
+    c.fillStyle=p.c; c.fillRect(W-30, 48+i*20, 12,12);
+    c.fillStyle=CH.ink2; c.fillText(`${p.n} (${p.v})`, W-38, 58+i*20);
+  });
+}
+
+function renderCharts(){
+  const base=results.find(r=>r.key==='base');
+  const rest=results.filter(r=>r.key!=='base');
+  bars('chAcc','דיוק לכל הפרעה', rest.map(r=>r.acc), rest.map(r=>r.name),
+    rest.map(r=> r.acc<=base.acc-0.10?CH.err : r.acc<=base.acc-0.03?CH.warn : CH.ab),
+    base.acc, v=>Math.round(v*100)+'%');
+  bars('chFlip','אחוז התמונות שהחליפו סיווג', rest.map(r=>r.flipRate), rest.map(r=>r.name),
+    rest.map(r=> r.flipRate>=0.25?CH.err : r.flipRate>=0.10?CH.warn : CH.ab),
+    null, v=>Math.round(v*100)+'%');
+  const s=results.find(r=>r.key===selected);
+  pie('chDir', `כיוון ההיפוכים · ${s?s.name:''}`, [
+    {n:'תקין ← חריג', v:s&&s.key!=='base'?s.up:0,   c:CH.warn},
+    {n:'חריג ← תקין', v:s&&s.key!=='base'?s.down:0, c:CH.err}]);
+}
+
+/* ---- גלריה ---- */
+function renderGallery(){
+  const r=results.find(x=>x.key===selected);
+  $('galTitle').textContent='התמונות · '+(r?r.name:'');
+  if(!r||r.key==='base'){
+    $('gal').innerHTML='<div class="hint">בחרו הפרעה בטבלה כדי לראות את התמונות שלה.</div>';
+    $('galCount').textContent=''; return;
+  }
+  const onlyFlip=$('galFilter').value==='flip';
+  const items=r.items.filter(it=>!onlyFlip||it.flipped).slice(0,60);
+  $('galCount').textContent=`${items.length} מוצגות · ${r.flips} היפוכים מתוך ${r.items.length}`;
+  $('gal').innerHTML=items.map((it,i)=>`
+    <div class="gitem">
+      <div class="gpair">
+        <canvas id="gb${i}" width="${SIZE}" height="${SIZE}"></canvas>
+        <canvas id="ga${i}" width="${SIZE}" height="${SIZE}"></canvas>
+      </div>
+      <div class="gcap">${it.name}<br>
+        אמת: <b>${it.truth==='abnormal'?'חריג':'תקין'}</b> ·
+        ${pct(it.before)} ← ${pct(it.after)}
+        <span class="flip ${it.flipped?'yes':'no'}">${it.flipped?'היפוך':'יציב'}</span>
+        <br><button class="small" data-g="${i}">הורדה כ-PNG</button></div>
+    </div>`).join('') || '<div class="hint">אין תמונות שהחליפו סיווג בהפרעה הזו.</div>';
+
+  items.forEach((it,i)=>{
+    const b=$('gb'+i), a=$('ga'+i);
+    if(!b||!a) return;
+    b.getContext('2d').drawImage(it.ref.cv,0,0,SIZE,SIZE);
+    const pc=perturbCanvas(r.key, it.ref.cv, it.other);
+    a.getContext('2d').drawImage(pc,0,0);
+  });
+  $('gal').querySelectorAll('[data-g]').forEach(btn=>btn.onclick=()=>{
+    downloadPair(items[+btn.dataset.g], r);
+  });
+}
+
+/* ---- הורדת זוג תמונות עם כיתוב ---------------------------------------
+   התלמיד צריך להדביק את הראיה בדוח, לא רק לראות אותה על המסך. הכיתוב
+   נצרב בתמונה כדי שהיא תישאר מובנת גם אחרי שתנותק מהכלי.               */
+function downloadPair(it, r){
+  const pad=12, cap=64, W=SIZE*2+pad*3, H=SIZE+pad*2+cap;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const c=cv.getContext('2d');
+  c.fillStyle='#fff'; c.fillRect(0,0,W,H);
+  c.drawImage(it.ref.cv, pad, pad, SIZE, SIZE);
+  c.drawImage(perturbCanvas(r.key, it.ref.cv, it.other), pad*2+SIZE, pad, SIZE, SIZE);
+  c.strokeStyle='#ccdae5';
+  c.strokeRect(pad,pad,SIZE,SIZE); c.strokeRect(pad*2+SIZE,pad,SIZE,SIZE);
+  c.direction='rtl'; c.textAlign='center'; c.font='12px Segoe UI, Arial'; c.fillStyle='#4a6478';
+  c.fillText('מקור', pad+SIZE/2, pad+SIZE+18);
+  c.fillText(r.name, pad*2+SIZE*1.5, pad+SIZE+18);
+  c.textAlign='right'; c.font='bold 13px Segoe UI, Arial'; c.fillStyle='#0d1f2b';
+  c.fillText(it.name, W-pad, pad+SIZE+40);
+  c.font='12px Segoe UI, Arial'; c.fillStyle= it.flipped ? '#dc2626' : '#059669';
+  c.fillText(`אמת: ${it.truth==='abnormal'?'חריג':'תקין'} · ` +
+    `ציון חריג ${pct(it.before)} ← ${pct(it.after)} · ` +
+    (it.flipped?'הסיווג התהפך':'הסיווג יציב'), W-pad, pad+SIZE+58);
+  const a=document.createElement('a');
+  a.href=cv.toDataURL('image/png');
+  a.download=fname(`${slug(r.name)}__${it.name.replace(/\.[^.]+$/,'')}.png`);
+  a.click();
+}
+
+$('dlAllBtn').onclick=()=>{
+  const r=results.find(x=>x.key===selected);
+  if(!r||r.key==='base') return;
+  const onlyFlip=$('galFilter').value==='flip';
+  const items=r.items.filter(it=>!onlyFlip||it.flipped).slice(0,60);
+  if(items.length>12 && !confirm(`יורדו ${items.length} קבצים. להמשיך?`)) return;
+  items.forEach((it,i)=>setTimeout(()=>downloadPair(it,r), i*180));
+};
+
+$('galFilter').onchange=renderGallery;
+
+/* ---- ייצוא ---- */
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-dl]'); if(!b) return;
+  const a=document.createElement('a');
+  a.href=$(b.dataset.dl).toDataURL('image/png');
+  a.download=fname(b.dataset.name)+'.png'; a.click();
+});
+
+const dlText=(n,t)=>{ const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));
+  a.download=n; a.click(); };
+
+$('csvBtn').onclick=()=>{
+  const rows=[['perturbation','accuracy','sensitivity','specificity','flips','flip_rate',
+               'mean_abs_delta','TP','FN','FP','TN']];
+  results.forEach(r=>rows.push([r.name,(r.acc*100).toFixed(1),
+    r.sens==null?'':(r.sens*100).toFixed(1), r.spec==null?'':(r.spec*100).toFixed(1),
+    r.flips,(r.flipRate*100).toFixed(1), r.meanDelta.toFixed(4),r.TP,r.FN,r.FP,r.TN]));
+  dlText(fname('perturbations_summary.csv'), rows.map(r=>r.join(',')).join('\n'));
+};
+
+$('csvImgBtn').onclick=()=>{
+  const rows=[['perturbation','image','true_label','score_before','score_after','delta','flipped']];
+  results.filter(r=>r.key!=='base').forEach(r=>r.items.forEach(it=>rows.push(
+    [r.name,it.name,it.truth,it.before.toFixed(4),it.after.toFixed(4),
+     (it.after-it.before).toFixed(4), it.flipped?'yes':'no'])));
+  dlText(fname('perturbations_per_image.csv'), rows.map(r=>r.join(',')).join('\n'));
+};
+
+function renderAll(){ renderVerdict(); renderTable(); renderCharts(); renderGallery(); }
+
+initIdentity();
+</script>
+</body>
+</html>

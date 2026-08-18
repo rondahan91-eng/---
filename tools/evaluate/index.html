@@ -559,10 +559,16 @@ async function buildHeatmap(p) {
   $('heatInfo').innerHTML = '<span style="color:var(--ink3)">מחשב...</span>';
 
   const img = await fileToImage(p.file);
+  // Teachable Machine חותך לריבוע מרכזי לפני ההקטנה. מתיחה ל-224x224 מוציאה
+  // תמונה לא-ריבועית מההתפלגות שעליה המודל אומן ומשנה את התחזית מהיסוד -
+  // נמדד 0.021 מול 1.000 על אותה תמונה. בלי החיתוך, המפה הייתה מחושבת על
+  // תמונה אחרת מזו שהפיקה את הציון המוצג לצדה.
   const base = document.createElement('canvas');
   base.width = base.height = HEAT_SIZE;
   const bctx = base.getContext('2d');
-  bctx.drawImage(img, 0, 0, HEAT_SIZE, HEAT_SIZE);
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  bctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2,
+                 side, side, 0, 0, HEAT_SIZE, HEAT_SIZE);
 
   const baseline = (await loadedModel.predict(base))[abnormalIdx].probability;
 
